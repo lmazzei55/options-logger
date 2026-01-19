@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Trading Journal App</title>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Trading Journal</h1>
+      <div class="app-description">
+        <p>Track your stock and options trades with automatic portfolio calculations</p>
+      </div>
+    </header>
+
+    <section class="portfolio-summary">
+      <h2>Portfolio Summary</h2>
+      <div class="summary-cards">
+        <div class="summary-card">
+          <h3>Total Positions</h3>
+          <p id="total-positions">0</p>
+        </div>
+        <div class="summary-card">
+          <h3>Total Shares</h3>
+          <p id="total-shares">0</p>
+        </div>
+        <div class="summary-card">
+          <h3>Average Cost</h3>
+          <p id="average-cost">$0.00</p>
+        </div>
+        <div class="summary-card">
+          <h3>Total Investment</h3>
+          <p id="total-investment">$0.00</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="add-transaction">Add Transaction</button>
+      <button class="tab-btn" data-tab="portfolio">Portfolio</button>
+      <button class="tab-btn" data-tab="transaction-history">Transaction History</button>
+      <button class="tab-btn" data-tab="import-export">Import/Export</button>
+    </div>
+
+    <div class="tab-content">
+      <!-- Add Transaction Tab -->
+      <div id="add-transaction" class="tab-pane active">
+        <h2>Add New Transaction</h2>
+        <div class="transaction-type-selector">
+          <button class="transaction-type active" data-type="stock">Stock</button>
+          <button class="transaction-type" data-type="option">Option</button>
+        </div>
+
+        <!-- Stock Transaction Form -->
+        <form id="stock-transaction-form" class="transaction-form">
+          <div class="form-group">
+            <label for="stock-ticker">Ticker Symbol</label>
+            <input type="text" id="stock-ticker" required placeholder="e.g., AAPL" />
+          </div>
+          <div class="form-group">
+            <label for="stock-action">Action</label>
+            <select id="stock-action" required>
+              <option value="buy">Buy</option>
+              <option value="sell">Sell</option>
+              <option value="initial">Initial Holding</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="stock-shares">Number of Shares</label>
+            <input type="number" id="stock-shares" required min="1" step="1" placeholder="e.g., 100"/>
+          </div>
+          <div class="form-group">
+            <label for="stock-price">Price per Share ($)</label>
+            <input type="number" id="stock-price" required min="0.01" step="0.01" placeholder="e.g., 150.50"/>
+          </div>
+          <div class="form-group">
+            <label for="stock-date">Date</label>
+            <input type="date" id="stock-date" required/>
+          </div>
+          <div class="form-group">
+            <label for="stock-notes">Notes</label>
+            <textarea id="stock-notes" placeholder="Add any additional information..."></textarea>
+          </div>
+          <button type="submit" class="btn-submit">Add Stock Transaction</button>
+        </form>
+
+        <!-- Option Transaction Form -->
+        <form id="option-transaction-form" class="transaction-form hidden">
+          <div class="form-group">
+            <label for="option-ticker">Underlying Stock</label>
+            <input type="text" id="option-ticker" required placeholder="e.g., AAPL" />
+          </div>
+          <div class="form-group">
+            <label for="option-strategy">Strategy</label>
+            <select id="option-strategy" required>
+              <option value="cash-secured-put">Cash-Secured Put</option>
+              <option value="covered-call">Covered Call</option>
+              <option value="long-call">Long Call</option>
+              <option value="long-put">Long Put</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="option-action">Action</label>
+            <select id="option-action" required>
+              <option value="buy">Buy</option>
+              <option value="sell">Sell</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="option-contracts">Number of Contracts</label>
+            <input type="number" id="option-contracts" required min="1" step="1" placeholder="e.g., 1"/>
+          </div>
+          <div class="form-group">
+            <label for="option-strike">Strike Price ($)</label>
+            <input type="number" id="option-strike" required min="0.01" step="0.01" placeholder="e.g., 150"/>
+          </div>
+          <div class="form-group">
+            <label for="option-premium">Premium per Share ($)</label>
+            <input type="number" id="option-premium" required min="0.01" step="0.01" placeholder="e.g., 3.50"/>
+          </div>
+          <div class="form-group">
+            <label for="option-expiration">Expiration Date</label>
+            <input type="date" id="option-expiration" required/>
+          </div>
+          <div class="form-group">
+            <label for="option-outcome">Outcome</label>
+            <select id="option-outcome" required>
+              <option value="open">Open</option>
+              <option value="expired">Expired</option>
+              <option value="assigned">Assigned</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+          <div class="form-group hidden" id="assignment-date-group">
+            <label for="option-assignment-date">Assignment/Close Date</label>
+            <input type="date" id="option-assignment-date"/>
+          </div>
+          <div class="form-group">
+            <label for="option-date">Transaction Date</label>
+            <input type="date" id="option-date" required/>
+          </div>
+          <div class="form-group">
+            <label for="option-notes">Notes</label>
+            <textarea id="option-notes" placeholder="Add any additional information..."></textarea>
+          </div>
+          <button type="submit" class="btn-submit">Add Option Transaction</button>
+        </form>
+      </div>
+
+      <!-- Portfolio Tab -->
+      <div id="portfolio" class="tab-pane">
+        <h2>Current Portfolio</h2>
+        <div class="search-filter">
+          <input type="text" id="portfolio-search" placeholder="Search by ticker..."/>
+        </div>
+        <table id="portfolio-table">
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Shares</th>
+              <th>Avg. Cost</th>
+              <th>Total Cost</th>
+              <th>Options Active</th>
+            </tr>
+          </thead>
+          <tbody id="portfolio-body">
+            <!-- Portfolio items will be inserted here by JavaScript -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Transaction History Tab -->
+      <div id="transaction-history" class="tab-pane">
+        <h2>Transaction History</h2>
+        <div class="search-filter">
+          <input type="text" id="transactions-search" placeholder="Search transactions..."/>
+          <select id="transaction-type-filter">
+            <option value="all">All Types</option>
+            <option value="stock">Stock Only</option>
+            <option value="option">Options Only</option>
+          </select>
+        </div>
+        <table id="transactions-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Type</th>
+              <th>Ticker</th>
+              <th>Action</th>
+              <th>Quantity</th>
+              <th>Price/Premium</th>
+              <th>Total</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="transactions-body">
+            <!-- Transactions will be inserted here by JavaScript -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Import/Export Tab -->
+      <div id="import-export" class="tab-pane">
+        <h2>Import/Export Data</h2>
+        <div class="import-export-container">
+          <div class="export-section">
+            <h3>Export Data</h3>
+            <p>Download your transaction history as a CSV file for backup or analysis.</p>
+            <button id="export-btn" class="btn-action">Export to CSV</button>
+          </div>
+          <div class="import-section">
+            <h3>Import Data</h3>
+            <p>Import transaction data from a CSV file. This will add to your existing data.</p>
+            <div class="file-upload">
+              <input type="file" id="import-file" accept=".csv"/>
+              <label for="import-file">Choose CSV File</label>
+            </div>
+            <button id="import-btn" class="btn-action" disabled>Import Data</button>
+            <div class="import-preview hidden">
+              <h4>Data Preview</h4>
+              <p id="import-summary"></p>
+              <table id="import-preview-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Ticker</th>
+                    <th>Action</th>
+                    <th>Quantity</th>
+                    <th>Price</th>
+                  </tr>
+                </thead>
+                <tbody id="import-preview-body">
+                  <!-- Preview data will be inserted here -->
+                </tbody>
+              </table>
+              <button id="confirm-import" class="btn-action">Confirm Import</button>
+              <button id="cancel-import" class="btn-action btn-secondary">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification -->
+    <div id="notification" class="notification hidden">
+      <span id="notification-message"></span>
+      <button id="close-notification">×</button>
+    </div>
+  </div>
+
+  <!-- Modal for transaction details and editing -->
+  <div id="transaction-modal" class="modal" aria-modal="true" role="dialog" aria-labelledby="modal-title">
+    <div class="modal-content">
+      <span class="close-modal">&times;</span>
+      <h2 id="modal-title">Transaction Details</h2>
+      <div id="transaction-details"><!-- Details will be populated by JavaScript --></div>
+      <div class="modal-actions">
+        <button id="edit-transaction" class="btn-action" data-id="">Edit</button>
+        <button id="delete-transaction" class="btn-action btn-danger" data-id="">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for editing -->
+  <div id="edit-modal" class="modal" aria-modal="true" role="dialog" aria-labelledby="edit-modal-title">
+    <div class="modal-content">
+      <span class="close-edit-modal">&times;</span>
+      <h2 id="edit-modal-title">Edit Transaction</h2>
+      <div id="edit-form-container"><!-- Edit form will be inserted here --></div>
+    </div>
+  </div>
+
+  <!-- Modal for confirming delete -->
+  <div id="confirm-delete-modal" class="modal" aria-modal="true" role="dialog" aria-labelledby="confirm-delete-title">
+    <div class="modal-content confirm-delete">
+      <span class="close-modal">&times;</span>
+      <h2 id="confirm-delete-title">Confirm Delete</h2>
+      <p>Are you sure you want to delete this transaction?</p>
+      <div class="modal-actions">
+        <button id="confirm-delete" class="btn-action btn-danger" data-id="">Delete</button>
+        <button id="cancel-delete" class="btn-action btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="app.js"></script>
+  <script src="importExport.js"></script>
+  <script src="portfolio.js"></script>
+  <script src="transactions.js"></script>
+</body>
+</html>

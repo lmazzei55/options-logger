@@ -1,16 +1,39 @@
 // portfolio.js
 
-let portfolioData = {};
+import { transactions } from './state.js';
 
-function updatePortfolio() {
+let portfolioData = {};
+let netOptionPremium = 0;
+
+export function updatePortfolio() {
     portfolioData = {};
+    netOptionPremium = 0;
+
+    const sortedTransactions = [...transactions].sort(function(a, b) {
+        const dateA = Date.parse(a.date);
+        const dateB = Date.parse(b.date);
+        const validA = !isNaN(dateA);
+        const validB = !isNaN(dateB);
+        
+        if (validA && validB && dateA !== dateB) {
+            return dateA - dateB;
+        }
+        if (validA !== validB) {
+            return validA ? -1 : 1;
+        }
+        
+        const timeA = a.timestamp || 0;
+        const timeB = b.timestamp || 0;
+        return timeA - timeB;
+    });
     
-    transactions.forEach(function(transaction) {
+    sortedTransactions.forEach(function(transaction) {
         const ticker = transaction.ticker;
         if (!portfolioData[ticker]) {
             portfolioData[ticker] = {
                 shares: 0,
                 totalCost: 0,
+                stockCost: 0,
                 optionsActive: 0
             };
         }
@@ -19,9 +42,11 @@ function updatePortfolio() {
             if (transaction.action === 'buy' || transaction.action === 'initial') {
                 portfolioData[ticker].shares += transaction.shares;
                 portfolioData[ticker].totalCost += (transaction.shares * transaction.price);
+                portfolioData[ticker].stockCost += (transaction.shares * transaction.price);
             } else if (transaction.action === 'sell') {
                 const prevShares = portfolioData[ticker].shares;
                 const prevCost = portfolioData[ticker].totalCost;
+                const prevStockCost = portfolioData[ticker].stockCost;
                 
                 // Subtract shares
                 portfolioData[ticker].shares -= transaction.shares;
@@ -30,12 +55,14 @@ function updatePortfolio() {
                 if (prevShares > 0) {
                     const fractionSold = transaction.shares / prevShares;
                     portfolioData[ticker].totalCost -= (fractionSold * prevCost);
+                    portfolioData[ticker].stockCost -= (fractionSold * prevStockCost);
                 }
                 
                 // If all shares sold, reset cost
                 if (portfolioData[ticker].shares <= 0) {
                     portfolioData[ticker].shares = 0;
                     portfolioData[ticker].totalCost = 0;
+                    portfolioData[ticker].stockCost = 0;
                 }
             }
         } 
@@ -45,6 +72,7 @@ function updatePortfolio() {
                 portfolioData[ticker] = {
                     shares: 0,
                     totalCost: 0,
+                    stockCost: 0,
                     optionsActive: 0
                 };
             }
@@ -68,25 +96,29 @@ function updatePortfolio() {
                 // Assigned put => buy shares at strike minus premium
                 if (transaction.strategy === 'cash-secured-put' && transaction.action === 'sell') {
                     const sharesAssigned = transaction.contracts * 100;
-                    const costBasis = (transaction.strike * sharesAssigned) - transaction.totalPremium;
+                    const costBasis = transaction.strike * sharesAssigned;
                     portfolioData[ticker].shares += sharesAssigned;
                     portfolioData[ticker].totalCost += costBasis;
+                    portfolioData[ticker].stockCost += costBasis;
                 }
                 // Assigned call => sell shares at strike
                 else if (transaction.strategy === 'covered-call' && transaction.action === 'sell') {
                     const sharesAssigned = transaction.contracts * 100;
                     const prevShares = portfolioData[ticker].shares;
                     const prevCost = portfolioData[ticker].totalCost;
+                    const prevStockCost = portfolioData[ticker].stockCost;
                     
                     if (prevShares > 0) {
                         portfolioData[ticker].shares -= sharesAssigned;
                         // Proportional cost reduction
                         const fraction = sharesAssigned / prevShares;
                         portfolioData[ticker].totalCost -= (fraction * prevCost);
+                        portfolioData[ticker].stockCost -= (fraction * prevStockCost);
                         
                         if (portfolioData[ticker].shares < 0) {
                             portfolioData[ticker].shares = 0;
                             portfolioData[ticker].totalCost = 0;
+                            portfolioData[ticker].stockCost = 0;
                         }
                     }
                 }
@@ -95,8 +127,10 @@ function updatePortfolio() {
             // Premium affects totalCost
             if (transaction.action === 'sell') {
                 portfolioData[ticker].totalCost -= transaction.totalPremium;
+                netOptionPremium += transaction.totalPremium;
             } else {
                 portfolioData[ticker].totalCost += transaction.totalPremium;
+                netOptionPremium -= transaction.totalPremium;
             }
         }
     });
@@ -105,7 +139,7 @@ function updatePortfolio() {
     updatePortfolioUI();
 }
 
-function updatePortfolioUI() {
+export function updatePortfolioUI() {
     const portfolioBody = document.getElementById('portfolio-body');
     portfolioBody.innerHTML = '';
     
@@ -146,16 +180,14 @@ function updatePortfolioUI() {
             portfolioBody.appendChild(row);
             totalPositions++;
             totalShares += data.shares;
-            totalInvestment += data.totalCost;
+            totalInvestment += data.stockCost;
         });
     }
     
     document.getElementById('total-positions').textContent = totalPositions;
     document.getElementById('total-shares').textContent = totalShares;
-    document.getElementById('total-investment').textContent = `$${totalInvestment.toFixed(2)}`;
-    
-    const avgCostOverall = (totalShares > 0) ? (totalInvestment / totalShares) : 0;
-    document.getElementById('average-cost').textContent = `$${avgCostOverall.toFixed(2)}`;
+    document.getElementById('stock-cost-basis').textContent = `$${totalInvestment.toFixed(2)}`;
+    document.getElementById('net-option-premium').textContent = `$${netOptionPremium.toFixed(2)}`;
     
     setupPortfolioSearch();
 }

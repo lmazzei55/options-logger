@@ -7,33 +7,9 @@ import {
   formatCurrency,
   formatPercentage
 } from '../utils/calculations';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  ArcElement
-} from 'chart.js';
 import { Line, Bar, Pie } from 'react-chartjs-2';
+import { Chart as ChartJS } from 'chart.js/auto';
 import { TrendingUp, PieChart, BarChart3, DollarSign } from 'lucide-react';
-
-// Register ChartJS components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  ArcElement
-);
 
 type TimePeriod = '1M' | '3M' | '6M' | '1Y' | 'ALL';
 

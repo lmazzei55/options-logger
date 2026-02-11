@@ -1,264 +1,260 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { StockTransactionForm } from '../components/forms/StockTransactionForm';
-import { formatCurrency, formatPercentage } from '../utils/calculations';
-import { Plus, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search } from 'lucide-react';
+import StockTransactionModal from '../components/modals/StockTransactionModal';
 import type { StockTransaction } from '../types';
 
 const Stocks: React.FC = () => {
   const {
     stockPositions,
-    addStockTransaction,
+    stockTransactions,
     selectedAccountId,
-    accounts
+    accounts,
+    deleteStockTransaction
   } = useAppContext();
-  
-  const [showForm, setShowForm] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortField, setSortField] = useState<'ticker' | 'shares' | 'value' | 'pl'>('value');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  
-  // Filter positions by search query
-  const filteredPositions = stockPositions.filter(position =>
-    position.ticker.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  
-  // Sort positions
-  const sortedPositions = [...filteredPositions].sort((a, b) => {
-    let aValue, bValue;
-    
-    switch (sortField) {
-      case 'ticker':
-        aValue = a.ticker;
-        bValue = b.ticker;
-        break;
-      case 'shares':
-        aValue = a.shares;
-        bValue = b.shares;
-        break;
-      case 'value':
-        aValue = a.marketValue || a.totalCostBasis;
-        bValue = b.marketValue || b.totalCostBasis;
-        break;
-      case 'pl':
-        aValue = a.unrealizedPL || 0;
-        bValue = b.unrealizedPL || 0;
-        break;
-      default:
-        aValue = 0;
-        bValue = 0;
-    }
-    
-    if (sortDirection === 'asc') {
-      return aValue > bValue ? 1 : -1;
-    } else {
-      return aValue < bValue ? 1 : -1;
-    }
-  });
-  
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<StockTransaction | undefined>();
+  const [sortField, setSortField] = useState<'ticker' | 'shares' | 'totalCostBasis'>('ticker');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [searchTerm, setSearchTerm] = useState('');
+
   const handleSort = (field: typeof sortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
-      setSortDirection('desc');
+      setSortDirection('asc');
     }
   };
-  
-  const handleSaveTransaction = (transaction: Omit<StockTransaction, 'id'>) => {
-    addStockTransaction(transaction);
-    setShowForm(false);
+
+  const filteredAndSortedPositions = useMemo(() => {
+    let filtered = stockPositions;
+
+    if (searchTerm) {
+      filtered = filtered.filter(p =>
+        p.ticker.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    return [...filtered].sort((a, b) => {
+      const aVal = a[sortField];
+      const bVal = b[sortField];
+      const multiplier = sortDirection === 'asc' ? 1 : -1;
+      
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return aVal.localeCompare(bVal) * multiplier;
+      }
+      return ((aVal as number) - (bVal as number)) * multiplier;
+    });
+  }, [stockPositions, searchTerm, sortField, sortDirection]);
+
+  const handleAddTransaction = () => {
+    setEditingTransaction(undefined);
+    setIsModalOpen(true);
   };
-  
-  const SortIcon = ({ field }: { field: typeof sortField }) => {
-    if (sortField !== field) return null;
-    return sortDirection === 'asc' ? (
-      <ChevronUp className="w-4 h-4 inline ml-1" />
-    ) : (
-      <ChevronDown className="w-4 h-4 inline ml-1" />
+
+  const handleEditPosition = (ticker: string, accountId: string) => {
+    // Find the most recent transaction for this position
+    const recentTransaction = stockTransactions
+      .filter(t => t.ticker === ticker && t.accountId === accountId)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+    
+    if (recentTransaction) {
+      setEditingTransaction(recentTransaction);
+      setIsModalOpen(true);
+    }
+  };
+
+  const handleDeletePosition = (ticker: string, accountId: string) => {
+    if (!confirm(`Are you sure you want to delete all transactions for ${ticker}? This cannot be undone.`)) {
+      return;
+    }
+
+    const transactionsToDelete = stockTransactions.filter(
+      t => t.ticker === ticker && t.accountId === accountId
     );
+
+    transactionsToDelete.forEach(t => deleteStockTransaction(t.id));
   };
-  
-  // Calculate totals
-  const totalValue = sortedPositions.reduce((sum, p) => sum + (p.marketValue || p.totalCostBasis), 0);
-  const totalCost = sortedPositions.reduce((sum, p) => sum + p.totalCostBasis, 0);
-  const totalPL = sortedPositions.reduce((sum, p) => sum + (p.unrealizedPL || 0), 0);
-  const totalPLPercent = totalCost > 0 ? (totalPL / totalCost) * 100 : 0;
-  
+
+  const totalPortfolioValue = useMemo(() => {
+    return stockPositions.reduce((sum, p) => sum + p.totalCostBasis, 0);
+  }, [stockPositions]);
+
+  const totalShares = useMemo(() => {
+    return stockPositions.reduce((sum, p) => sum + p.shares, 0);
+  }, [stockPositions]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Stock Positions</h1>
-          <p className="text-gray-600 mt-1">
-            {selectedAccountId
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Stock Positions</h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">
+            {selectedAccountId 
               ? `Viewing: ${accounts.find(a => a.id === selectedAccountId)?.name}`
               : 'Viewing: All Accounts'}
           </p>
         </div>
         <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          onClick={handleAddTransaction}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="h-5 w-5" />
           Add Transaction
         </button>
       </div>
-      
-      {/* Add Transaction Form */}
-      {showForm && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Add Stock Transaction</h2>
-          <StockTransactionForm
-            onSave={handleSaveTransaction}
-            onCancel={() => setShowForm(false)}
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
+          <div className="text-sm text-gray-600 dark:text-gray-400">Total Positions</div>
+          <div className="text-3xl font-bold text-gray-900 dark:text-white mt-2">
+            {stockPositions.length}
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
+          <div className="text-sm text-gray-600 dark:text-gray-400">Total Shares</div>
+          <div className="text-3xl font-bold text-gray-900 dark:text-white mt-2">
+            {totalShares.toLocaleString()}
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
+          <div className="text-sm text-gray-600 dark:text-gray-400">Total Cost Basis</div>
+          <div className="text-3xl font-bold text-gray-900 dark:text-white mt-2">
+            ${totalPortfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        </div>
+      </div>
+
+      {/* Search */}
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search by ticker..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
-      )}
-      
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <p className="text-sm text-gray-600">Total Positions</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{sortedPositions.length}</p>
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <p className="text-sm text-gray-600">Total Value</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(totalValue)}</p>
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <p className="text-sm text-gray-600">Total Cost Basis</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(totalCost)}</p>
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <p className="text-sm text-gray-600">Total P&L</p>
-          <p className={`text-2xl font-bold mt-1 ${totalPL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {formatCurrency(totalPL)}
-          </p>
-          <p className={`text-sm ${totalPL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {formatPercentage(totalPLPercent)}
-          </p>
-        </div>
       </div>
-      
-      {/* Search and Filter */}
-      <div className="bg-white rounded-lg shadow-md p-4">
-        <div className="flex items-center gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search by ticker..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-        </div>
-      </div>
-      
+
       {/* Positions Table */}
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        {sortedPositions.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-800">
+              <tr>
+                <th
+                  onClick={() => handleSort('ticker')}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  Ticker {sortField === 'ticker' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th
+                  onClick={() => handleSort('shares')}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  Shares {sortField === 'shares' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Avg Cost
+                </th>
+                <th
+                  onClick={() => handleSort('totalCostBasis')}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  Total Cost {sortField === 'totalCostBasis' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  First Purchase
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+              {filteredAndSortedPositions.length === 0 ? (
                 <tr>
-                  <th
-                    onClick={() => handleSort('ticker')}
-                    className="text-left py-3 px-4 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100"
-                  >
-                    Ticker <SortIcon field="ticker" />
-                  </th>
-                  <th
-                    onClick={() => handleSort('shares')}
-                    className="text-right py-3 px-4 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100"
-                  >
-                    Shares <SortIcon field="shares" />
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">
-                    Avg Cost
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">
-                    Total Cost
-                  </th>
-                  <th
-                    onClick={() => handleSort('value')}
-                    className="text-right py-3 px-4 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100"
-                  >
-                    Market Value <SortIcon field="value" />
-                  </th>
-                  <th
-                    onClick={() => handleSort('pl')}
-                    className="text-right py-3 px-4 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100"
-                  >
-                    P&L <SortIcon field="pl" />
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">
-                    P&L %
-                  </th>
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                    {searchTerm ? 'No positions found matching your search.' : 'No stock positions found. Click "Add Transaction" to get started.'}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {sortedPositions.map((position, index) => {
-                  const value = position.marketValue || position.totalCostBasis;
-                  const pl = position.unrealizedPL || 0;
-                  const plPercent = position.unrealizedPLPercent || 0;
-                  
-                  return (
-                    <tr
-                      key={`${position.ticker}-${position.accountId}-${index}`}
-                      className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="py-3 px-4">
-                        <div>
-                          <p className="font-semibold text-gray-900">{position.ticker}</p>
-                          {!selectedAccountId && (
-                            <p className="text-xs text-gray-500">
-                              {accounts.find(a => a.id === position.accountId)?.name}
-                            </p>
-                          )}
+              ) : (
+                filteredAndSortedPositions.map((position) => (
+                  <tr key={`${position.accountId}-${position.ticker}`} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                        {position.ticker}
+                      </div>
+                      {!selectedAccountId && (
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {accounts.find(a => a.id === position.accountId)?.name}
                         </div>
-                      </td>
-                      <td className="py-3 px-4 text-right text-sm text-gray-900">
-                        {position.shares}
-                      </td>
-                      <td className="py-3 px-4 text-right text-sm text-gray-900">
-                        {formatCurrency(position.averageCostBasis)}
-                      </td>
-                      <td className="py-3 px-4 text-right text-sm text-gray-900">
-                        {formatCurrency(position.totalCostBasis)}
-                      </td>
-                      <td className="py-3 px-4 text-right text-sm font-medium text-gray-900">
-                        {formatCurrency(value)}
-                      </td>
-                      <td className={`py-3 px-4 text-right text-sm font-medium ${
-                        pl >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {formatCurrency(pl)}
-                      </td>
-                      <td className={`py-3 px-4 text-right text-sm font-medium ${
-                        pl >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {formatPercentage(plPercent)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="text-center py-12">
-            <p className="text-gray-500 text-lg">No stock positions yet</p>
-            <p className="text-gray-400 text-sm mt-2">Add your first stock transaction to get started</p>
-          </div>
-        )}
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900 dark:text-white">
+                        {position.shares.toLocaleString()}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900 dark:text-white">
+                        ${position.averageCostBasis.toFixed(2)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                        ${position.totalCostBasis.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        {new Date(position.firstPurchaseDate).toLocaleDateString()}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => handleEditPosition(position.ticker, position.accountId)}
+                          className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300"
+                          title="Edit latest transaction"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeletePosition(position.ticker, position.accountId)}
+                          className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
+                          title="Delete all transactions"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {/* Transaction Modal */}
+      <StockTransactionModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingTransaction(undefined);
+        }}
+        transaction={editingTransaction}
+      />
     </div>
   );
 };

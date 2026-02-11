@@ -330,7 +330,7 @@ const Dashboard: React.FC = () => {
       {/* Comprehensive Holdings Overview */}
       <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
         <h2 className="text-lg font-semibold text-white mb-4">All Holdings</h2>
-        {stockPositions.length > 0 ? (
+        {(stockPositions.length > 0 || optionPositions.filter(p => p.status === 'open').length > 0) ? (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -383,12 +383,12 @@ const Dashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {[...stockPositions]
-                  .sort((a, b) => {
+                {(() => {
+                  // Sort stock positions
+                  const sortedStocks = [...stockPositions].sort((a, b) => {
                     let aVal: any = a[holdingsSortField];
                     let bVal: any = b[holdingsSortField];
                     
-                    // Handle market value fallback
                     if (holdingsSortField === 'marketValue') {
                       aVal = a.marketValue || a.totalCostBasis;
                       bVal = b.marketValue || b.totalCostBasis;
@@ -400,15 +400,26 @@ const Dashboard: React.FC = () => {
                       return aVal.localeCompare(bVal) * multiplier;
                     }
                     return ((aVal || 0) - (bVal || 0)) * multiplier;
-                  })
-                  .map(position => {
+                  });
+
+                  // Get all open option positions
+                  const openOptions = optionPositions.filter(p => p.status === 'open');
+                  
+                  // Track which options have been displayed
+                  const displayedOptionIds = new Set<string>();
+                  
+                  const rows: React.JSX.Element[] = [];
+                  
+                  // Render stocks with their related options
+                  sortedStocks.forEach(position => {
                     const value = position.marketValue || position.totalCostBasis;
                     const pl = position.unrealizedPL || 0;
                     const plPercent = position.unrealizedPLPercent || 0;
                     const account = accounts.find(a => a.id === position.accountId);
-
-                    return (
-                      <tr key={`${position.ticker}-${position.accountId}`} className="border-b border-gray-800 hover:bg-gray-800">
+                    
+                    // Stock row
+                    rows.push(
+                      <tr key={`stock-${position.ticker}-${position.accountId}`} className="border-b border-gray-800 hover:bg-gray-800">
                         <td className="py-3 px-4 text-sm font-medium text-white">{position.ticker}</td>
                         {!selectedAccountId && (
                           <td className="py-3 px-4 text-sm text-blue-400">{account?.name}</td>
@@ -429,7 +440,82 @@ const Dashboard: React.FC = () => {
                         </td>
                       </tr>
                     );
-                  })}
+                    
+                    // Find related options for this stock and account
+                    const relatedOptions = openOptions.filter(opt => 
+                      opt.ticker === position.ticker && 
+                      opt.accountId === position.accountId
+                    );
+                    
+                    // Render related options indented
+                    relatedOptions.forEach(option => {
+                      displayedOptionIds.add(option.id);
+                      const optAccount = accounts.find(a => a.id === option.accountId);
+                      const optPL = option.realizedPL || 0;
+                      const daysUntil = daysUntilExpiration(option.expirationDate);
+                      
+                      rows.push(
+                        <tr key={`option-${option.id}`} className="border-b border-gray-800 hover:bg-gray-800 bg-gray-850">
+                          <td className="py-2 px-4 text-sm text-gray-400 pl-8">
+                            <span className="text-purple-400">↳</span> {option.optionType.toUpperCase()} ${option.strikePrice} exp {new Date(option.expirationDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </td>
+                          {!selectedAccountId && (
+                            <td className="py-2 px-4 text-sm text-gray-500">{optAccount?.name}</td>
+                          )}
+                          <td className="py-2 px-4 text-sm text-right text-gray-400">{option.contracts} contracts</td>
+                          <td className="py-2 px-4 text-sm text-right text-gray-400">{formatCurrency(option.averagePremium)}</td>
+                          <td className="py-2 px-4 text-sm text-right text-gray-400">{formatCurrency(option.totalPremium)}</td>
+                          <td className="py-2 px-4 text-sm text-right text-gray-400">
+                            {option.collateralRequired ? formatCurrency(option.collateralRequired) : '-'}
+                          </td>
+                          <td className={`py-2 px-4 text-sm text-right ${
+                            optPL >= 0 ? 'text-green-400' : 'text-red-400'
+                          }`}>
+                            {formatCurrency(optPL)}
+                          </td>
+                          <td className="py-2 px-4 text-sm text-right text-gray-400">
+                            {daysUntil}d
+                          </td>
+                        </tr>
+                      );
+                    });
+                  });
+                  
+                  // Render standalone options (not related to owned stocks)
+                  const standaloneOptions = openOptions.filter(opt => !displayedOptionIds.has(opt.id));
+                  standaloneOptions.forEach(option => {
+                    const optAccount = accounts.find(a => a.id === option.accountId);
+                    const optPL = option.realizedPL || 0;
+                    const daysUntil = daysUntilExpiration(option.expirationDate);
+                    
+                    rows.push(
+                      <tr key={`standalone-option-${option.id}`} className="border-b border-gray-800 hover:bg-gray-800">
+                        <td className="py-3 px-4 text-sm font-medium text-purple-400">
+                          {option.ticker} {option.optionType.toUpperCase()} ${option.strikePrice}
+                        </td>
+                        {!selectedAccountId && (
+                          <td className="py-3 px-4 text-sm text-blue-400">{optAccount?.name}</td>
+                        )}
+                        <td className="py-3 px-4 text-sm text-right text-white">{option.contracts} contracts</td>
+                        <td className="py-3 px-4 text-sm text-right text-white">{formatCurrency(option.averagePremium)}</td>
+                        <td className="py-3 px-4 text-sm text-right text-white">{formatCurrency(option.totalPremium)}</td>
+                        <td className="py-3 px-4 text-sm text-right text-white">
+                          {option.collateralRequired ? formatCurrency(option.collateralRequired) : '-'}
+                        </td>
+                        <td className={`py-3 px-4 text-sm text-right font-medium ${
+                          optPL >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {formatCurrency(optPL)}
+                        </td>
+                        <td className="py-3 px-4 text-sm text-right text-white">
+                          {daysUntil}d
+                        </td>
+                      </tr>
+                    );
+                  });
+                  
+                  return rows;
+                })()}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-gray-700 bg-gray-800">

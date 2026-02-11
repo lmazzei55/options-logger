@@ -28,6 +28,17 @@ const Options: React.FC = () => {
   const [closingPrice, setClosingPrice] = useState('');
   const [closingFees, setClosingFees] = useState('');
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
+  const [tableSortField, setTableSortField] = useState<'ticker' | 'contracts' | 'totalPremium' | 'expirationDate'>('expirationDate');
+  const [tableSortDirection, setTableSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const handleTableSort = (field: typeof tableSortField) => {
+    if (tableSortField === field) {
+      setTableSortDirection(tableSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setTableSortField(field);
+      setTableSortDirection('asc');
+    }
+  };
 
   const analytics = calculateOptionsAnalytics(
     optionTransactions, optionPositions, selectedAccountId || undefined
@@ -373,17 +384,54 @@ const Options: React.FC = () => {
   };
 
   const PositionTable = ({ positions }: { positions: typeof optionPositions }) => {
+    const sortedPositions = [...positions].sort((a, b) => {
+      let aVal: any = a[tableSortField];
+      let bVal: any = b[tableSortField];
+      
+      if (tableSortField === 'expirationDate') {
+        aVal = new Date(a.expirationDate).getTime();
+        bVal = new Date(b.expirationDate).getTime();
+      }
+      
+      const multiplier = tableSortDirection === 'asc' ? 1 : -1;
+      
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return aVal.localeCompare(bVal) * multiplier;
+      }
+      return ((aVal || 0) - (bVal || 0)) * multiplier;
+    });
+
     return (
       <div className="bg-gray-900 rounded-lg shadow overflow-hidden border border-gray-800">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-800 border-b border-gray-700">
               <tr>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Position</th>
+                <th 
+                  onClick={() => handleTableSort('ticker')}
+                  className="text-left py-3 px-4 text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-700"
+                >
+                  Position {tableSortField === 'ticker' && (tableSortDirection === 'asc' ? '↑' : '↓')}
+                </th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Strategy</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Contracts</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Premium</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Expiration</th>
+                <th 
+                  onClick={() => handleTableSort('contracts')}
+                  className="text-right py-3 px-4 text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-700"
+                >
+                  Contracts {tableSortField === 'contracts' && (tableSortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th 
+                  onClick={() => handleTableSort('totalPremium')}
+                  className="text-right py-3 px-4 text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-700"
+                >
+                  Premium {tableSortField === 'totalPremium' && (tableSortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th 
+                  onClick={() => handleTableSort('expirationDate')}
+                  className="text-left py-3 px-4 text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-700"
+                >
+                  Expiration {tableSortField === 'expirationDate' && (tableSortDirection === 'asc' ? '↑' : '↓')}
+                </th>
                 <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Collateral</th>
                 <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Ann. Return</th>
                 {!selectedAccountId && (
@@ -394,7 +442,7 @@ const Options: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {positions.map(position => {
+              {sortedPositions.map(position => {
                 const account = accounts.find(a => a.id === position.accountId);
                 const daysUntil = daysUntilExpiration(position.expirationDate);
                 const openTxn = optionTransactions.find(t =>

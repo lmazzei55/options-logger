@@ -10,6 +10,7 @@ import {
 import { TrendingUp, TrendingDown, DollarSign, PieChart, Calendar, Plus, Shield, Wallet } from 'lucide-react';
 import StockTransactionModal from '../components/modals/StockTransactionModal';
 import OptionTransactionModal from '../components/modals/OptionTransactionModal';
+import PortfolioCharts from '../components/charts/PortfolioCharts';
 
 const Dashboard: React.FC = () => {
   const {
@@ -46,7 +47,28 @@ const Dashboard: React.FC = () => {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 10);
 
-  const topStockPositions = [...stockPositions]
+  // Aggregate stock positions by ticker when viewing all accounts
+  const aggregatedPositions = selectedAccountId
+    ? stockPositions // Don't aggregate for single account view
+    : stockPositions.reduce((acc, pos) => {
+        const existing = acc.find(p => p.ticker === pos.ticker);
+        if (existing) {
+          // Aggregate: sum shares and cost basis, recalculate average
+          const totalShares = existing.shares + pos.shares;
+          const totalCost = existing.totalCostBasis + pos.totalCostBasis;
+          const totalMarketValue = (existing.marketValue || existing.totalCostBasis) + (pos.marketValue || pos.totalCostBasis);
+          existing.shares = totalShares;
+          existing.totalCostBasis = totalCost;
+          existing.averageCostBasis = totalCost / totalShares;
+          existing.marketValue = totalMarketValue;
+          existing.transactionIds = [...existing.transactionIds, ...pos.transactionIds];
+        } else {
+          acc.push({ ...pos });
+        }
+        return acc;
+      }, [] as typeof stockPositions);
+  
+  const topStockPositions = [...aggregatedPositions]
     .sort((a, b) => (b.marketValue || b.totalCostBasis) - (a.marketValue || a.totalCostBasis))
     .slice(0, 5);
 
@@ -214,6 +236,9 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Portfolio Composition Charts */}
+      <PortfolioCharts portfolioSummary={portfolioSummary} stockPositions={aggregatedPositions} />
 
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

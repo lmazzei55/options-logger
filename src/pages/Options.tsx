@@ -25,7 +25,8 @@ const Options: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [closingPositionId, setClosingPositionId] = useState<string | null>(null);
-  const [closingPrice, setClosingPrice] = useState<string>('');
+  const [closingPrice, setClosingPrice] = useState('');
+  const [closingFees, setClosingFees] = useState('');
 
   const analytics = calculateOptionsAnalytics(
     optionTransactions, optionPositions, selectedAccountId || undefined
@@ -45,19 +46,25 @@ const Options: React.FC = () => {
 
   const handleClosePosition = (positionId: string, closeType: 'closed' | 'expired' | 'assigned') => {
     if (closeType === 'closed') {
-      // For manual close, use the entered closing price
+      // For manual close, use the entered closing price and fees
       const price = parseFloat(closingPrice);
+      const fees = parseFloat(closingFees) || 0;
       if (isNaN(price) || price < 0) {
         alert('Please enter a valid closing price per share');
         return;
       }
-      closeOptionPosition(positionId, closeType, price);
+      if (fees < 0) {
+        alert('Fees cannot be negative');
+        return;
+      }
+      closeOptionPosition(positionId, closeType, price, fees);
     } else {
       // For expired/assigned, no closing price needed
       closeOptionPosition(positionId, closeType);
     }
     setClosingPositionId(null);
     setClosingPrice('');
+    setClosingFees('');
   };
 
   const handleDeletePosition = (positionId: string) => {
@@ -107,15 +114,7 @@ const Options: React.FC = () => {
   const PositionCard = ({ position }: { position: typeof optionPositions[0] }) => {
     const daysUntil = daysUntilExpiration(position.expirationDate);
     const isExpiringSoon = daysUntil <= 7 && position.status === 'open';
-    const annualizedReturn = position.collateralRequired
-      ? calculateAnnualizedReturn(
-          position.totalPremium,
-          position.collateralRequired,
-          Math.abs(daysUntil) || 1
-        )
-      : 0;
-    const isClosing = closingPositionId === position.id;
-
+    
     // Find the original open transaction to determine if seller or buyer
     const openTxn = optionTransactions.find(t =>
       t.ticker === position.ticker &&
@@ -124,6 +123,22 @@ const Options: React.FC = () => {
       t.accountId === position.accountId &&
       (t.action === 'sell-to-open' || t.action === 'buy-to-open')
     );
+    
+    // Calculate total days from open to expiration (not days remaining)
+    const totalDays = openTxn
+      ? Math.max(1, Math.round(
+          (new Date(position.expirationDate).getTime() - new Date(openTxn.transactionDate).getTime()) / (1000 * 60 * 60 * 24)
+        ))
+      : Math.abs(daysUntil) || 1;
+    
+    const annualizedReturn = position.collateralRequired
+      ? calculateAnnualizedReturn(
+          position.totalPremium,
+          position.collateralRequired,
+          totalDays
+        )
+      : 0;
+    const isClosing = closingPositionId === position.id;
     const isSeller = openTxn?.action === 'sell-to-open';
 
     return (
@@ -188,30 +203,48 @@ const Options: React.FC = () => {
             
             {/* Closing price input for manual close */}
             <div className="mb-3">
-              <label className="text-xs text-gray-400 block mb-1">
-                Closing price per share (for manual close)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={closingPrice}
-                onChange={(e) => setClosingPrice(e.target.value)}
-                placeholder="e.g., 1.50"
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">
+                  Closing price per share (for manual close)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={closingPrice}
+                  onChange={(e) => setClosingPrice(e.target.value)}
+                  placeholder="e.g., 1.50"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">
+                  Fees (optional)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={closingFees}
+                  onChange={(e) => setClosingFees(e.target.value)}
+                  placeholder="e.g., 1.00"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
               {closingPrice && !isNaN(parseFloat(closingPrice)) && (
                 <div className="mt-2 text-xs text-gray-400">
                   <p>
-                    Total close cost: {formatCurrency(parseFloat(closingPrice) * position.contracts * 100)}
+                    Total close cost: {formatCurrency(parseFloat(closingPrice) * position.contracts * 100 + (parseFloat(closingFees) || 0))}
                   </p>
                   {isSeller && (
                     <p className={`font-semibold ${
-                      position.totalPremium - parseFloat(closingPrice) * position.contracts * 100 >= 0
+                      position.totalPremium - parseFloat(closingPrice) * position.contracts * 100 - (openTxn?.fees || 0) - (parseFloat(closingFees) || 0) >= 0
                         ? 'text-green-400' : 'text-red-400'
                     }`}>
                       Estimated P&L: {formatCurrency(
-                        position.totalPremium - parseFloat(closingPrice) * position.contracts * 100 - (openTxn?.fees || 0)
+                        position.totalPremium - parseFloat(closingPrice) * position.contracts * 100 - (openTxn?.fees || 0) - (parseFloat(closingFees) || 0)
                       )}
                     </p>
                   )}

@@ -53,7 +53,8 @@ interface AppContextType {
   closeOptionPosition: (
     positionId: string,
     closeType: 'closed' | 'expired' | 'assigned',
-    closePrice?: number
+    closePrice?: number,
+    fees?: number
   ) => void;
   
   // Tag actions
@@ -257,7 +258,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const closeOptionPosition = useCallback((
     positionId: string,
     closeType: 'closed' | 'expired' | 'assigned',
-    closePrice?: number // price per share for buy-to-close / sell-to-close
+    closePrice?: number, // price per share for buy-to-close / sell-to-close
+    fees?: number // fees for closing transaction
   ) => {
     // We need current state, so we use functional updates
     // First, find the position and original transaction
@@ -278,6 +280,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const closingAction = isSeller ? 'buy-to-close' : 'sell-to-close';
     
     // Calculate realized P&L
+    const closeFees = fees || 0;
     let realizedPL = 0;
     let closePremiumPerShare = closePrice || 0;
     let closeTotalPremium = closePremiumPerShare * position.contracts * 100;
@@ -308,12 +311,12 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       // Closed manually (bought/sold to close)
       if (isSeller) {
         // Sold to open, bought to close
-        // P&L = premium received - premium paid to close - fees
-        realizedPL = openTxn.totalPremium - closeTotalPremium - openTxn.fees;
+        // P&L = premium received - premium paid to close - open fees - close fees
+        realizedPL = openTxn.totalPremium - closeTotalPremium - openTxn.fees - closeFees;
       } else {
         // Bought to open, sold to close
-        // P&L = premium received on close - premium paid to open - fees
-        realizedPL = closeTotalPremium - openTxn.totalPremium - openTxn.fees;
+        // P&L = premium received on close - premium paid to open - open fees - close fees
+        realizedPL = closeTotalPremium - openTxn.totalPremium - openTxn.fees - closeFees;
       }
     }
     
@@ -328,7 +331,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       contracts: position.contracts,
       premiumPerShare: closePremiumPerShare,
       totalPremium: closeTotalPremium,
-      fees: 0,
+      fees: closeFees,
       transactionDate: today,
       strategy: position.strategy,
       status: closeType,

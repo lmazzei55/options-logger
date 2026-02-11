@@ -251,12 +251,16 @@ const Dashboard: React.FC = () => {
                 const value = position.marketValue || position.totalCostBasis;
                 const pl = position.unrealizedPL || 0;
                 const plPercent = position.unrealizedPLPercent || 0;
+                const account = accounts.find(a => a.id === position.accountId);
 
                 return (
                   <div key={`${position.ticker}-${position.accountId}`} className="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
                     <div>
                       <p className="font-semibold text-white">{position.ticker}</p>
                       <p className="text-sm text-gray-400">{position.shares} shares @ {formatCurrency(position.averageCostBasis)}</p>
+                      {!selectedAccountId && account && (
+                        <p className="text-xs text-blue-400 mt-1">{account.name}</p>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-white">{formatCurrency(value)}</p>

@@ -285,25 +285,83 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
           </div>
         </div>
 
-        {/* Ticker */}
+        {/* Ticker - Smart Position Selector for Closing */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
-            Ticker Symbol *
+            {(formData.action === 'buy-to-close' || formData.action === 'sell-to-close')
+              ? 'Select Position to Close *'
+              : 'Ticker Symbol *'}
           </label>
-          <input
-            type="text"
-            value={formData.ticker}
-            onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
-            placeholder="AAPL"
-            className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          {(formData.action === 'buy-to-close' || formData.action === 'sell-to-close') ? (
+            <>
+              <select
+                value={`${formData.ticker}|${formData.strikePrice}|${formData.expirationDate}|${formData.optionType}`}
+                onChange={(e) => {
+                  const [ticker, strike, exp, type] = e.target.value.split('|');
+                  const selectedPosition = optionPositions.find(
+                    p => p.ticker === ticker &&
+                         p.strikePrice === parseFloat(strike) &&
+                         p.expirationDate === exp &&
+                         p.optionType === type &&
+                         p.accountId === formData.accountId &&
+                         p.status === 'open'
+                  );
+                  if (selectedPosition) {
+                    setFormData({
+                      ...formData,
+                      ticker,
+                      strikePrice: parseFloat(strike),
+                      expirationDate: exp,
+                      optionType: type as 'call' | 'put',
+                      strategy: selectedPosition.strategy,
+                      contracts: Math.min(formData.contracts, selectedPosition.contracts),
+                      premiumPerShare: selectedPosition.totalPremium / (selectedPosition.contracts * 100) / 2 // Default to half premium for closing
+                    });
+                  }
+                }}
+                className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">-- Select a position to close --</option>
+                {optionPositions
+                  .filter(p => p.accountId === formData.accountId && p.status === 'open')
+                  .map(position => {
+                    const key = `${position.ticker}|${position.strikePrice}|${position.expirationDate}|${position.optionType}`;
+                    return (
+                      <option key={key} value={key}>
+                        {position.ticker} ${position.strikePrice} {position.optionType.toUpperCase()} - {position.contracts} contracts - Exp: {new Date(position.expirationDate).toLocaleDateString()}
+                      </option>
+                    );
+                  })}
+              </select>
+              {optionPositions.filter(p => p.accountId === formData.accountId && p.status === 'open').length === 0 && (
+                <p className="text-sm text-yellow-400 mt-1">
+                  No open option positions available in this account to close
+                </p>
+              )}
+              {formData.ticker && (
+                <p className="text-sm text-blue-400 mt-1">
+                  💡 You can close a partial position by adjusting the contracts field below
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <input
+                type="text"
+                value={formData.ticker}
+                onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
+                placeholder="AAPL"
+                className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {stockPosition && (
+                <p className="text-sm text-gray-400 mt-1">
+                  Current position: {stockPosition.shares} shares @ ${stockPosition.averageCostBasis.toFixed(2)}
+                </p>
+              )}
+            </>
+          )}
           {errors.ticker && (
             <p className="text-sm text-red-400 mt-1">{errors.ticker}</p>
-          )}
-          {stockPosition && (
-            <p className="text-sm text-gray-400 mt-1">
-              Current position: {stockPosition.shares} shares @ ${stockPosition.averageCostBasis.toFixed(2)}
-            </p>
           )}
         </div>
 

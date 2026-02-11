@@ -10,7 +10,8 @@ import {
   Settings as SettingsIcon,
   Menu,
   X,
-  DollarSign
+  DollarSign,
+  FileText
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -70,6 +71,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       path: '/analytics',
       name: 'Analytics',
       icon: <LineChart className="h-5 w-5" />
+    },
+    {
+      path: '/taxes',
+      name: 'Taxes',
+      icon: <FileText className="h-5 w-5" />
     },
     {
       path: '/accounts',

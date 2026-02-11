@@ -6,7 +6,7 @@ import {
   calculateOptionsAnalytics,
   calculateAnnualizedReturn
 } from '../utils/calculations';
-import { Plus, Search, TrendingUp, DollarSign, Target, Calendar, Edit2, Trash2, X } from 'lucide-react';
+import { Plus, Search, TrendingUp, DollarSign, Target, Calendar, Edit2, Trash2, X, LayoutGrid, List } from 'lucide-react';
 import type { OptionTransaction } from '../types';
 import OptionTransactionModal from '../components/modals/OptionTransactionModal';
 
@@ -27,6 +27,7 @@ const Options: React.FC = () => {
   const [closingPositionId, setClosingPositionId] = useState<string | null>(null);
   const [closingPrice, setClosingPrice] = useState('');
   const [closingFees, setClosingFees] = useState('');
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
 
   const analytics = calculateOptionsAnalytics(
     optionTransactions, optionPositions, selectedAccountId || undefined
@@ -112,6 +113,7 @@ const Options: React.FC = () => {
   };
 
   const PositionCard = ({ position }: { position: typeof optionPositions[0] }) => {
+    const account = accounts.find(a => a.id === position.accountId);
     const daysUntil = daysUntilExpiration(position.expirationDate);
     const isExpiringSoon = daysUntil <= 7 && position.status === 'open';
     
@@ -151,6 +153,9 @@ const Options: React.FC = () => {
               {position.ticker} ${position.strikePrice} {position.optionType.toUpperCase()}
             </h3>
             <p className="text-sm text-gray-400">{position.strategy}</p>
+            {!selectedAccountId && account && (
+              <p className="text-xs text-blue-400 mt-1">{account.name}</p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(position.status)}`}>
@@ -367,6 +372,121 @@ const Options: React.FC = () => {
     );
   };
 
+  const PositionTable = ({ positions }: { positions: typeof optionPositions }) => {
+    return (
+      <div className="bg-gray-900 rounded-lg shadow overflow-hidden border border-gray-800">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-800 border-b border-gray-700">
+              <tr>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Position</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Strategy</th>
+                <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Contracts</th>
+                <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Premium</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Expiration</th>
+                <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Collateral</th>
+                <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Ann. Return</th>
+                {!selectedAccountId && (
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Account</th>
+                )}
+                <th className="text-center py-3 px-4 text-sm font-medium text-gray-300">Status</th>
+                <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {positions.map(position => {
+                const account = accounts.find(a => a.id === position.accountId);
+                const daysUntil = daysUntilExpiration(position.expirationDate);
+                const openTxn = optionTransactions.find(t =>
+                  t.ticker === position.ticker &&
+                  t.strikePrice === position.strikePrice &&
+                  t.expirationDate === position.expirationDate &&
+                  t.accountId === position.accountId &&
+                  (t.action === 'sell-to-open' || t.action === 'buy-to-open')
+                );
+                const totalDays = openTxn
+                  ? Math.max(1, Math.round(
+                      (new Date(position.expirationDate).getTime() - new Date(openTxn.transactionDate).getTime()) / (1000 * 60 * 60 * 24)
+                    ))
+                  : Math.abs(daysUntil) || 1;
+                const annualizedReturn = position.collateralRequired
+                  ? calculateAnnualizedReturn(position.totalPremium, position.collateralRequired, totalDays)
+                  : 0;
+
+                return (
+                  <tr key={position.id} className="border-b border-gray-800 hover:bg-gray-800">
+                    <td className="py-3 px-4 text-sm text-white font-medium">
+                      {position.ticker} ${position.strikePrice} {position.optionType.toUpperCase()}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-400">{position.strategy}</td>
+                    <td className="py-3 px-4 text-sm text-right text-white">{position.contracts}</td>
+                    <td className="py-3 px-4 text-sm text-right text-white">{formatCurrency(position.totalPremium)}</td>
+                    <td className="py-3 px-4 text-sm text-white">
+                      {new Date(position.expirationDate).toLocaleDateString()}
+                      {position.status === 'open' && (
+                        <span className={`ml-2 text-xs ${
+                          daysUntil <= 7 ? 'text-yellow-400' : 'text-gray-500'
+                        }`}>
+                          ({daysUntil}d)
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-right text-white">
+                      {position.collateralRequired ? formatCurrency(position.collateralRequired) : '-'}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-right text-green-400">
+                      {annualizedReturn > 0 ? `${annualizedReturn.toFixed(2)}%` : '-'}
+                    </td>
+                    {!selectedAccountId && (
+                      <td className="py-3 px-4 text-sm text-blue-400">{account?.name}</td>
+                    )}
+                    <td className="py-3 px-4 text-center">
+                      <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(position.status)}`}>
+                        {position.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="flex justify-end gap-2">
+                        {position.status === 'open' && (
+                          <>
+                            <button
+                              onClick={() => handleEditTransaction(position.id)}
+                              className="text-blue-400 hover:text-blue-300 p-1"
+                              title="Edit"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setClosingPositionId(position.id);
+                                setClosingPrice('');
+                              }}
+                              className="text-yellow-400 hover:text-yellow-300 p-1"
+                              title="Close position"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={() => handleDeletePosition(position.id)}
+                          className="text-red-400 hover:text-red-300 p-1"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -501,6 +621,29 @@ const Options: React.FC = () => {
                 {filter}
               </button>
             ))}
+            <div className="border-l border-gray-700 mx-2"></div>
+            <button
+              onClick={() => setViewMode('card')}
+              className={`p-2 rounded-md transition-colors ${
+                viewMode === 'card'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+              title="Card view"
+            >
+              <LayoutGrid className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-2 rounded-md transition-colors ${
+                viewMode === 'table'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+              title="Table view"
+            >
+              <List className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </div>
@@ -526,11 +669,15 @@ const Options: React.FC = () => {
           <h2 className="text-xl font-semibold text-white mb-4">
             Open Positions ({openPositions.length})
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {openPositions.map(position => (
-              <PositionCard key={position.id} position={position} />
-            ))}
-          </div>
+          {viewMode === 'card' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {openPositions.map(position => (
+                <PositionCard key={position.id} position={position} />
+              ))}
+            </div>
+          ) : (
+            <PositionTable positions={openPositions} />
+          )}
         </div>
       )}
 
@@ -540,11 +687,15 @@ const Options: React.FC = () => {
           <h2 className="text-xl font-semibold text-white mb-4">
             Closed Positions ({closedPositions.length})
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {closedPositions.map(position => (
-              <PositionCard key={position.id} position={position} />
-            ))}
-          </div>
+          {viewMode === 'card' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {closedPositions.map(position => (
+                <PositionCard key={position.id} position={position} />
+              ))}
+            </div>
+          ) : (
+            <PositionTable positions={closedPositions} />
+          )}
         </div>
       )}
 

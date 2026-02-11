@@ -197,22 +197,55 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
           </div>
         </div>
 
-        {/* Ticker */}
+        {/* Ticker - Smart Position Selector for Sell */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
-            Ticker Symbol *
+            {formData.action === 'sell' ? 'Select Position to Sell *' : 'Ticker Symbol *'}
           </label>
-          <input
-            type="text"
-            value={formData.ticker}
-            onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
-            placeholder="AAPL"
-            className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          {formData.action === 'sell' ? (
+            <>
+              <select
+                value={formData.ticker}
+                onChange={(e) => {
+                  const selectedPosition = stockPositions.find(
+                    p => p.ticker === e.target.value && p.accountId === formData.accountId
+                  );
+                  setFormData({
+                    ...formData,
+                    ticker: e.target.value,
+                    pricePerShare: selectedPosition?.averageCostBasis || 0
+                  });
+                }}
+                className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">-- Select a position --</option>
+                {stockPositions
+                  .filter(p => p.accountId === formData.accountId && p.shares > 0)
+                  .map(position => (
+                    <option key={position.ticker} value={position.ticker}>
+                      {position.ticker} ({position.shares} shares available @ ${position.averageCostBasis.toFixed(2)})
+                    </option>
+                  ))}
+              </select>
+              {stockPositions.filter(p => p.accountId === formData.accountId && p.shares > 0).length === 0 && (
+                <p className="text-sm text-yellow-400 mt-1">
+                  No stock positions available in this account to sell
+                </p>
+              )}
+            </>
+          ) : (
+            <input
+              type="text"
+              value={formData.ticker}
+              onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
+              placeholder="AAPL"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          )}
           {errors.ticker && (
             <p className="text-sm text-red-400 mt-1">{errors.ticker}</p>
           )}
-          {currentPosition && (
+          {currentPosition && formData.action !== 'sell' && (
             <p className="text-sm text-gray-400 mt-1">
               Current position: {currentPosition.shares} shares @ ${currentPosition.averageCostBasis.toFixed(2)}
             </p>

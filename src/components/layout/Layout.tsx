@@ -84,9 +84,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-800">
+    <div className="min-h-screen flex flex-col bg-gray-800">
       {/* Header */}
-      <header className="bg-blue-600 dark:bg-gray-900 text-white shadow-md z-10">
+      <header className="bg-gray-900 text-white shadow-md z-10">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between py-4">
             <div className="flex items-center">
@@ -130,7 +130,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       
       <div className="flex flex-1">
         {/* Sidebar - Desktop */}
-        <aside className="hidden md:block w-64 bg-white dark:bg-gray-900 shadow-md">
+        <aside className="hidden md:block w-64 bg-gray-900 shadow-md">
           <nav className="mt-5 px-2">
             <ul className="space-y-2">
               {navItems.map((item) => (
@@ -139,8 +139,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     to={item.path}
                     className={`flex items-center px-4 py-3 text-sm font-medium rounded-md transition-colors ${
                       isActivePath(item.path)
-                        ? 'bg-blue-100 text-blue-700 dark:bg-gray-800 dark:text-blue-400'
-                        : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+                        ? 'bg-gray-800 text-blue-400'
+                        : 'text-gray-300 hover:bg-gray-800'
                     }`}
                   >
                     <span className="mr-3">{item.icon}</span>
@@ -155,15 +155,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {/* Mobile menu */}
         {isMobileMenuOpen && (
           <div className="md:hidden fixed inset-0 z-40 bg-gray-600 bg-opacity-75">
-            <div className="fixed inset-y-0 left-0 w-64 bg-white dark:bg-gray-900 shadow-lg z-50">
-              <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
+            <div className="fixed inset-y-0 left-0 w-64 bg-gray-900 shadow-lg z-50">
+              <div className="flex items-center justify-between p-4 border-b border-gray-700">
                 <Link to="/" className="flex items-center" onClick={() => setIsMobileMenuOpen(false)}>
-                  <DollarSign className="h-7 w-7 text-blue-600 dark:text-blue-400 mr-2" />
-                  <span className="text-lg font-bold text-gray-900 dark:text-white">InvestTrack</span>
+                  <DollarSign className="h-7 w-7 text-blue-400 mr-2" />
+                  <span className="text-lg font-bold text-white">InvestTrack</span>
                 </Link>
                 <button
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="text-gray-500 dark:text-gray-400 focus:outline-none"
+                  className="text-gray-400 focus:outline-none"
                   aria-label="Close menu"
                 >
                   <X className="h-6 w-6" />
@@ -178,8 +178,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                         to={item.path}
                         className={`flex items-center px-4 py-3 text-sm font-medium rounded-md transition-colors ${
                           isActivePath(item.path)
-                            ? 'bg-blue-100 text-blue-700 dark:bg-gray-800 dark:text-blue-400'
-                            : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+                            ? 'bg-gray-800 text-blue-400'
+                            : 'text-gray-300 hover:bg-gray-800'
                         }`}
                         onClick={() => setIsMobileMenuOpen(false)}
                       >
@@ -193,7 +193,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               
               {/* Mobile Account Selector */}
               <div className="mt-4 px-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
                   Account
                 </label>
                 <select
@@ -217,7 +217,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         )}
         
         {/* Main content */}
-        <main className="flex-1 bg-gray-50 dark:bg-gray-800 overflow-y-auto">
+        <main className="flex-1 bg-gray-800 overflow-y-auto">
           <div className="container mx-auto px-4 py-6">
             {children}
           </div>

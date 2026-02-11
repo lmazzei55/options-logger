@@ -227,13 +227,13 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Account Selection */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Account *
           </label>
           <select
             value={formData.accountId}
             onChange={(e) => setFormData({ ...formData, accountId: e.target.value })}
-            className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Select Account</option>
             {accounts.map(account => (
@@ -243,10 +243,10 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
             ))}
           </select>
           {errors.accountId && (
-            <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.accountId}</p>
+            <p className="text-sm text-red-400 mt-1">{errors.accountId}</p>
           )}
           {selectedAccount && (
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-sm text-gray-400 mt-1">
               Available Cash: ${availableCash.toFixed(2)}
             </p>
           )}
@@ -255,25 +255,25 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
         {/* Date and Strategy */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Date *
             </label>
             <input
               type="date"
               value={formData.transactionDate}
               onChange={(e) => setFormData({ ...formData, transactionDate: e.target.value })}
-              className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Strategy *
             </label>
             <select
               value={formData.strategy}
               onChange={(e) => setFormData({ ...formData, strategy: e.target.value as OptionTransaction['strategy'] })}
-              className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="covered-call">Covered Call</option>
               <option value="cash-secured-put">Cash-Secured Put</option>
@@ -287,7 +287,7 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
 
         {/* Ticker */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Ticker Symbol *
           </label>
           <input
@@ -295,13 +295,13 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
             value={formData.ticker}
             onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
             placeholder="AAPL"
-            className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {errors.ticker && (
-            <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.ticker}</p>
+            <p className="text-sm text-red-400 mt-1">{errors.ticker}</p>
           )}
           {stockPosition && (
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-sm text-gray-400 mt-1">
               Current position: {stockPosition.shares} shares @ ${stockPosition.averageCostBasis.toFixed(2)}
             </p>
           )}
@@ -310,13 +310,13 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
         {/* Option Type, Action, Contracts */}
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Option Type *
             </label>
             <select
               value={formData.optionType}
               onChange={(e) => setFormData({ ...formData, optionType: e.target.value as 'call' | 'put' })}
-              className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="call">Call</option>
               <option value="put">Put</option>
@@ -324,13 +324,13 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Action *
             </label>
             <select
               value={formData.action}
               onChange={(e) => setFormData({ ...formData, action: e.target.value as OptionTransaction['action'] })}
-              className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="sell-to-open">Sell to Open</option>
               <option value="buy-to-open">Buy to Open</option>
@@ -340,7 +340,7 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Contracts *
             </label>
             <input
@@ -348,10 +348,10 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
               value={formData.contracts || ''}
               onChange={(e) => setFormData({ ...formData, contracts: parseInt(e.target.value) || 0 })}
               min="1"
-              className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {errors.contracts && (
-              <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.contracts}</p>
+              <p className="text-sm text-red-400 mt-1">{errors.contracts}</p>
             )}
           </div>
         </div>
@@ -359,7 +359,7 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
         {/* Strike Price and Premium */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Strike Price *
             </label>
             <input
@@ -368,15 +368,15 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
               onChange={(e) => setFormData({ ...formData, strikePrice: parseFloat(e.target.value) || 0 })}
               step="0.01"
               min="0"
-              className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {errors.strikePrice && (
-              <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.strikePrice}</p>
+              <p className="text-sm text-red-400 mt-1">{errors.strikePrice}</p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Premium per Share *
             </label>
             <input
@@ -385,17 +385,17 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
               onChange={(e) => setFormData({ ...formData, premiumPerShare: parseFloat(e.target.value) || 0 })}
               step="0.01"
               min="0"
-              className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {errors.premiumPerShare && (
-              <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.premiumPerShare}</p>
+              <p className="text-sm text-red-400 mt-1">{errors.premiumPerShare}</p>
             )}
           </div>
         </div>
 
         {/* Expiration Date with Presets */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Expiration Date *
           </label>
           <div className="flex gap-2">
@@ -403,46 +403,46 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
               type="date"
               value={formData.expirationDate}
               onChange={(e) => setFormData({ ...formData, expirationDate: e.target.value })}
-              className="flex-1 px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
               type="button"
               onClick={() => setExpirationPreset(7)}
-              className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm"
+              className="px-3 py-2 rounded-md bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm"
             >
               +7d
             </button>
             <button
               type="button"
               onClick={() => setExpirationPreset(14)}
-              className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm"
+              className="px-3 py-2 rounded-md bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm"
             >
               +14d
             </button>
             <button
               type="button"
               onClick={() => setExpirationPreset(30)}
-              className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm"
+              className="px-3 py-2 rounded-md bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm"
             >
               +30d
             </button>
             <button
               type="button"
               onClick={() => setExpirationPreset(45)}
-              className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm"
+              className="px-3 py-2 rounded-md bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm"
             >
               +45d
             </button>
           </div>
           {errors.expirationDate && (
-            <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.expirationDate}</p>
+            <p className="text-sm text-red-400 mt-1">{errors.expirationDate}</p>
           )}
         </div>
 
         {/* Fees and Status */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Fees
             </label>
             <input
@@ -451,18 +451,18 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
               onChange={(e) => setFormData({ ...formData, fees: parseFloat(e.target.value) || 0 })}
               step="0.01"
               min="0"
-              className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Status
             </label>
             <select
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value as OptionTransaction['status'] })}
-              className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="open">Open</option>
               <option value="closed">Closed</option>
@@ -473,31 +473,31 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
         </div>
 
         {/* Calculations Summary */}
-        <div className="bg-blue-50 dark:bg-gray-700 p-4 rounded-md space-y-2">
+        <div className="bg-gray-700 p-4 rounded-md space-y-2">
           <div className="flex justify-between items-center">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Total Premium:</span>
-            <span className="text-lg font-bold text-gray-900 dark:text-white">
+            <span className="text-sm font-medium text-gray-300">Total Premium:</span>
+            <span className="text-lg font-bold text-white">
               ${totalPremium.toFixed(2)}
             </span>
           </div>
           {collateralRequired > 0 && (
             <>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600 dark:text-gray-400">Collateral Required:</span>
-                <span className="text-sm font-medium text-gray-900 dark:text-white">
+                <span className="text-sm text-gray-400">Collateral Required:</span>
+                <span className="text-sm font-medium text-white">
                   ${collateralRequired.toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600 dark:text-gray-400">Return on Collateral:</span>
-                <span className="text-sm font-medium text-gray-900 dark:text-white">
+                <span className="text-sm text-gray-400">Return on Collateral:</span>
+                <span className="text-sm font-medium text-white">
                   {((totalPremium / collateralRequired) * 100).toFixed(2)}%
                 </span>
               </div>
               {formData.expirationDate && (
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Annualized Return:</span>
-                  <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                  <span className="text-sm text-gray-400">Annualized Return:</span>
+                  <span className="text-sm font-medium text-green-400">
                     {annualizedReturn.toFixed(2)}%
                   </span>
                 </div>
@@ -508,24 +508,24 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
 
         {/* Notes */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Notes
           </label>
           <textarea
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
             rows={3}
-            className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Optional notes about this transaction..."
           />
         </div>
 
         {/* Buttons */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-700">
           <button
             type="button"
             onClick={onClose}
-            className="px-6 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            className="px-6 py-2 rounded-md border border-gray-600 text-gray-300 hover:bg-gray-700 transition-colors"
           >
             Cancel
           </button>

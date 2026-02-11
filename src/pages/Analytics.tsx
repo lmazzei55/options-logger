@@ -8,7 +8,7 @@ import {
   formatPercentage
 } from '../utils/calculations';
 import { Line, Bar, Pie } from 'react-chartjs-2';
-import { Chart as ChartJS } from 'chart.js/auto';
+import 'chart.js/auto';
 import { TrendingUp, PieChart, BarChart3, DollarSign } from 'lucide-react';
 
 type TimePeriod = '1M' | '3M' | '6M' | '1Y' | 'ALL';
@@ -202,8 +202,8 @@ const Analytics: React.FC = () => {
       {/* Header with Time Period Selector */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Analytics & Reports</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
+          <h1 className="text-3xl font-bold text-white">Analytics & Reports</h1>
+          <p className="text-gray-400 mt-1">
             {selectedAccountId
               ? `Viewing: ${accounts.find(a => a.id === selectedAccountId)?.name}`
               : 'Viewing: All Accounts'}
@@ -219,7 +219,7 @@ const Analytics: React.FC = () => {
               className={`px-4 py-2 rounded-md font-medium transition-colors ${
                 timePeriod === period
                   ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
             >
               {period}
@@ -229,36 +229,36 @@ const Analytics: React.FC = () => {
       </div>
       
       {/* Portfolio Overview */}
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+      <div className="bg-gray-900 border border-gray-800 rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
           <PieChart className="w-5 h-5" />
           Portfolio Overview
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Value</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            <p className="text-sm text-gray-400">Total Value</p>
+            <p className="text-2xl font-bold text-white mt-1">
               {formatCurrency(portfolioSummary.totalValue)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Invested</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            <p className="text-sm text-gray-400">Total Invested</p>
+            <p className="text-2xl font-bold text-white mt-1">
               {formatCurrency(portfolioSummary.totalInvested)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total P&L</p>
+            <p className="text-sm text-gray-400">Total P&L</p>
             <p className={`text-2xl font-bold mt-1 ${
-              portfolioSummary.totalPL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+              portfolioSummary.totalPL >= 0 ? 'text-green-400' : 'text-red-400'
             }`}>
               {formatCurrency(portfolioSummary.totalPL)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Return %</p>
+            <p className="text-sm text-gray-400">Return %</p>
             <p className={`text-2xl font-bold mt-1 ${
-              portfolioSummary.totalPLPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+              portfolioSummary.totalPLPercent >= 0 ? 'text-green-400' : 'text-red-400'
             }`}>
               {formatPercentage(portfolioSummary.totalPLPercent)}
             </p>
@@ -269,15 +269,15 @@ const Analytics: React.FC = () => {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Cumulative Premium Chart */}
-        <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <div className="bg-gray-900 border border-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">
             Cumulative Premium Over Time
           </h3>
           <div className="h-64">
             {premiumOverTime.labels.length > 0 ? (
               <Line data={premiumOverTime} options={chartOptions} />
             ) : (
-              <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+              <div className="flex items-center justify-center h-full text-gray-400">
                 No data available for selected period
               </div>
             )}
@@ -285,15 +285,15 @@ const Analytics: React.FC = () => {
         </div>
 
         {/* Monthly Premium Chart */}
-        <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <div className="bg-gray-900 border border-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">
             Monthly Premium
           </h3>
           <div className="h-64">
             {monthlyPremium.labels.length > 0 ? (
               <Bar data={monthlyPremium} options={chartOptions} />
             ) : (
-              <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+              <div className="flex items-center justify-center h-full text-gray-400">
                 No data available for selected period
               </div>
             )}
@@ -301,15 +301,15 @@ const Analytics: React.FC = () => {
         </div>
 
         {/* Premium by Strategy Chart */}
-        <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6 lg:col-span-2">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <div className="bg-gray-900 border border-gray-800 rounded-lg shadow p-6 lg:col-span-2">
+          <h3 className="text-lg font-semibold text-white mb-4">
             Premium by Strategy
           </h3>
           <div className="h-64">
             {premiumByStrategy.labels.length > 0 ? (
               <Pie data={premiumByStrategy} options={pieChartOptions} />
             ) : (
-              <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+              <div className="flex items-center justify-center h-full text-gray-400">
                 No data available for selected period
               </div>
             )}
@@ -318,40 +318,40 @@ const Analytics: React.FC = () => {
       </div>
       
       {/* Asset Allocation */}
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+      <div className="bg-gray-900 border border-gray-800 rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
           <BarChart3 className="w-5 h-5" />
           Asset Allocation
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Stocks</p>
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+          <div className="bg-blue-900/20 p-4 rounded-lg">
+            <p className="text-sm text-gray-400 mb-2">Stocks</p>
+            <p className="text-2xl font-bold text-blue-400">
               {formatCurrency(portfolioSummary.stockValue)}
             </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-sm text-gray-400 mt-1">
               {portfolioSummary.totalValue > 0
                 ? ((portfolioSummary.stockValue / portfolioSummary.totalValue) * 100).toFixed(1)
                 : 0}%
             </p>
           </div>
-          <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Options</p>
-            <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+          <div className="bg-purple-900/20 p-4 rounded-lg">
+            <p className="text-sm text-gray-400 mb-2">Options</p>
+            <p className="text-2xl font-bold text-purple-400">
               {formatCurrency(portfolioSummary.optionValue)}
             </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-sm text-gray-400 mt-1">
               {portfolioSummary.totalValue > 0
                 ? ((portfolioSummary.optionValue / portfolioSummary.totalValue) * 100).toFixed(1)
                 : 0}%
             </p>
           </div>
-          <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Cash</p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+          <div className="bg-green-900/20 p-4 rounded-lg">
+            <p className="text-sm text-gray-400 mb-2">Cash</p>
+            <p className="text-2xl font-bold text-green-400">
               {formatCurrency(portfolioSummary.totalCash)}
             </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-sm text-gray-400 mt-1">
               {portfolioSummary.totalValue > 0
                 ? ((portfolioSummary.totalCash / portfolioSummary.totalValue) * 100).toFixed(1)
                 : 0}%
@@ -361,49 +361,49 @@ const Analytics: React.FC = () => {
       </div>
       
       {/* Stock Analytics */}
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+      <div className="bg-gray-900 border border-gray-800 rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
           <TrendingUp className="w-5 h-5" />
           Stock Analytics
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Positions</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            <p className="text-sm text-gray-400">Total Positions</p>
+            <p className="text-2xl font-bold text-white mt-1">
               {stockAnalytics.positionCount}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Stock Value</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            <p className="text-sm text-gray-400">Total Stock Value</p>
+            <p className="text-2xl font-bold text-white mt-1">
               {formatCurrency(stockAnalytics.totalStockValue)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Total Cost Basis</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            <p className="text-sm text-gray-400">Total Cost Basis</p>
+            <p className="text-2xl font-bold text-white mt-1">
               {formatCurrency(stockAnalytics.totalCostBasis)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Unrealized P&L</p>
+            <p className="text-sm text-gray-400">Unrealized P&L</p>
             <p className={`text-2xl font-bold mt-1 ${
-              stockAnalytics.totalUnrealizedPL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+              stockAnalytics.totalUnrealizedPL >= 0 ? 'text-green-400' : 'text-red-400'
             }`}>
               {formatCurrency(stockAnalytics.totalUnrealizedPL)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Realized P&L</p>
+            <p className="text-sm text-gray-400">Realized P&L</p>
             <p className={`text-2xl font-bold mt-1 ${
-              stockAnalytics.totalRealizedPL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+              stockAnalytics.totalRealizedPL >= 0 ? 'text-green-400' : 'text-red-400'
             }`}>
               {formatCurrency(stockAnalytics.totalRealizedPL)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Avg Holding Period</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            <p className="text-sm text-gray-400">Avg Holding Period</p>
+            <p className="text-2xl font-bold text-white mt-1">
               {stockAnalytics.averageHoldingPeriod.toFixed(0)} days
             </p>
           </div>
@@ -411,65 +411,65 @@ const Analytics: React.FC = () => {
       </div>
       
       {/* Options Analytics */}
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+      <div className="bg-gray-900 border border-gray-800 rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
           <DollarSign className="w-5 h-5" />
           Options Analytics
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Premium Collected</p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">
+            <p className="text-sm text-gray-400">Premium Collected</p>
+            <p className="text-2xl font-bold text-green-400 mt-1">
               {formatCurrency(optionsAnalytics.totalPremiumCollected)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Premium Paid</p>
-            <p className="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">
+            <p className="text-sm text-gray-400">Premium Paid</p>
+            <p className="text-2xl font-bold text-red-400 mt-1">
               {formatCurrency(optionsAnalytics.totalPremiumPaid)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Net Premium</p>
+            <p className="text-sm text-gray-400">Net Premium</p>
             <p className={`text-2xl font-bold mt-1 ${
-              optionsAnalytics.netPremium >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+              optionsAnalytics.netPremium >= 0 ? 'text-green-400' : 'text-red-400'
             }`}>
               {formatCurrency(optionsAnalytics.netPremium)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Win Rate</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            <p className="text-sm text-gray-400">Win Rate</p>
+            <p className="text-2xl font-bold text-white mt-1">
               {optionsAnalytics.winRate.toFixed(1)}%
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Annualized Return</p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">
+            <p className="text-sm text-gray-400">Annualized Return</p>
+            <p className="text-2xl font-bold text-green-400 mt-1">
               {optionsAnalytics.annualizedReturn.toFixed(2)}%
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Assignment Rate</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            <p className="text-sm text-gray-400">Assignment Rate</p>
+            <p className="text-2xl font-bold text-white mt-1">
               {optionsAnalytics.assignmentRate.toFixed(1)}%
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Avg Return Per Trade</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            <p className="text-sm text-gray-400">Avg Return Per Trade</p>
+            <p className="text-2xl font-bold text-white mt-1">
               {formatCurrency(optionsAnalytics.averageReturnPerTrade)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Avg Days to Close</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            <p className="text-sm text-gray-400">Avg Days to Close</p>
+            <p className="text-2xl font-bold text-white mt-1">
               {optionsAnalytics.averageDaysToClose.toFixed(0)} days
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Collateral Efficiency</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            <p className="text-sm text-gray-400">Collateral Efficiency</p>
+            <p className="text-2xl font-bold text-white mt-1">
               {optionsAnalytics.collateralEfficiency.toFixed(2)}%
             </p>
           </div>
@@ -477,29 +477,29 @@ const Analytics: React.FC = () => {
       </div>
       
       {/* Collateral Tracking */}
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Collateral Status</h2>
+      <div className="bg-gray-900 border border-gray-800 rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold text-white mb-4">Collateral Status</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Active Collateral</p>
-            <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+          <div className="bg-orange-900/20 p-4 rounded-lg">
+            <p className="text-sm text-gray-400 mb-2">Active Collateral</p>
+            <p className="text-2xl font-bold text-orange-400">
               {formatCurrency(optionsAnalytics.activeCollateral)}
             </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Currently reserved</p>
+            <p className="text-sm text-gray-400 mt-1">Currently reserved</p>
           </div>
-          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Available Cash</p>
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+          <div className="bg-blue-900/20 p-4 rounded-lg">
+            <p className="text-sm text-gray-400 mb-2">Available Cash</p>
+            <p className="text-2xl font-bold text-blue-400">
               {formatCurrency(portfolioSummary.totalCash - optionsAnalytics.activeCollateral)}
             </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">For new trades</p>
+            <p className="text-sm text-gray-400 mt-1">For new trades</p>
           </div>
-          <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Projected Premium</p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+          <div className="bg-green-900/20 p-4 rounded-lg">
+            <p className="text-sm text-gray-400 mb-2">Projected Premium</p>
+            <p className="text-2xl font-bold text-green-400">
               {formatCurrency(optionsAnalytics.projectedPremium)}
             </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">From open positions</p>
+            <p className="text-sm text-gray-400 mt-1">From open positions</p>
           </div>
         </div>
       </div>

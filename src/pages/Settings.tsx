@@ -7,19 +7,19 @@ const Settings: React.FC = () => {
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [showConfirmMock, setShowConfirmMock] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  
+
   const handleLoadMockData = () => {
     loadMockData();
     setShowConfirmMock(false);
     showNotification('success', 'Mock data loaded successfully!');
   };
-  
+
   const handleClearAllData = () => {
     clearAllData();
     setShowConfirmClear(false);
     showNotification('success', 'All data cleared successfully!');
   };
-  
+
   const handleExportData = () => {
     const jsonData = exportData();
     const blob = new Blob([jsonData], { type: 'application/json' });
@@ -33,11 +33,11 @@ const Settings: React.FC = () => {
     URL.revokeObjectURL(url);
     showNotification('success', 'Data exported successfully!');
   };
-  
+
   const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    
+
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
@@ -48,32 +48,32 @@ const Settings: React.FC = () => {
         } else {
           showNotification('error', 'Failed to import data. Please check the file format.');
         }
-      } catch (error) {
+      } catch {
         showNotification('error', 'Failed to import data. Invalid file format.');
       }
     };
     reader.readAsText(file);
     event.target.value = '';
   };
-  
+
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 5000);
   };
-  
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-600 mt-1">Manage your preferences and data</p>
+        <h1 className="text-3xl font-bold text-white">Settings</h1>
+        <p className="text-gray-400 mt-1">Manage your preferences and data</p>
       </div>
-      
+
       {/* Notification */}
       {notification && (
         <div className={`p-4 rounded-lg flex items-center gap-3 ${
           notification.type === 'success'
-            ? 'bg-green-50 text-green-800 border border-green-200'
-            : 'bg-red-50 text-red-800 border border-red-200'
+            ? 'bg-green-900/30 text-green-400 border border-green-700'
+            : 'bg-red-900/30 text-red-400 border border-red-700'
         }`}>
           {notification.type === 'success' ? (
             <CheckCircle className="w-5 h-5" />
@@ -83,49 +83,34 @@ const Settings: React.FC = () => {
           <span>{notification.message}</span>
         </div>
       )}
-      
+
       {/* Appearance Settings */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Appearance</h2>
+      <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
+        <h2 className="text-xl font-semibold text-white mb-4">Appearance</h2>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Theme
-            </label>
-            <select
-              value={settings.theme}
-              onChange={(e) => updateSettings({ theme: e.target.value as any })}
-              className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-              <option value="system">System</option>
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Date Format
             </label>
             <select
               value={settings.dateFormat}
               onChange={(e) => updateSettings({ dateFormat: e.target.value })}
-              className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full md:w-64 px-3 py-2 border border-gray-600 rounded-md bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="MM/DD/YYYY">MM/DD/YYYY</option>
               <option value="DD/MM/YYYY">DD/MM/YYYY</option>
               <option value="YYYY-MM-DD">YYYY-MM-DD</option>
             </select>
           </div>
-          
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Default Currency
             </label>
             <select
               value={settings.defaultCurrency}
               onChange={(e) => updateSettings({ defaultCurrency: e.target.value })}
-              className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full md:w-64 px-3 py-2 border border-gray-600 rounded-md bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="USD">USD ($)</option>
               <option value="EUR">EUR (€)</option>
@@ -135,19 +120,19 @@ const Settings: React.FC = () => {
           </div>
         </div>
       </div>
-      
+
       {/* Data Management */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+      <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
+        <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
           <Database className="w-5 h-5" />
           Data Management
         </h2>
-        
+
         <div className="space-y-4">
           {/* Load Mock Data */}
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="font-semibold text-gray-900 mb-2">Load Mock Data</h3>
-            <p className="text-sm text-gray-600 mb-4">
+          <div className="border border-gray-700 rounded-lg p-4">
+            <h3 className="font-semibold text-white mb-2">Load Mock Data</h3>
+            <p className="text-sm text-gray-400 mb-4">
               Load sample data to explore the app's features. This will replace all existing data.
             </p>
             {!showConfirmMock ? (
@@ -159,8 +144,8 @@ const Settings: React.FC = () => {
                 Load Mock Data
               </button>
             ) : (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-sm text-yellow-800 mb-3">
+              <div className="bg-yellow-900/30 border border-yellow-700 rounded-lg p-4">
+                <p className="text-sm text-yellow-300 mb-3">
                   Are you sure? This will replace all existing data with mock data.
                 </p>
                 <div className="flex gap-2">
@@ -172,7 +157,7 @@ const Settings: React.FC = () => {
                   </button>
                   <button
                     onClick={() => setShowConfirmMock(false)}
-                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+                    className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-colors"
                   >
                     Cancel
                   </button>
@@ -180,11 +165,11 @@ const Settings: React.FC = () => {
               </div>
             )}
           </div>
-          
+
           {/* Export Data */}
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="font-semibold text-gray-900 mb-2">Export Data</h3>
-            <p className="text-sm text-gray-600 mb-4">
+          <div className="border border-gray-700 rounded-lg p-4">
+            <h3 className="font-semibold text-white mb-2">Export Data</h3>
+            <p className="text-sm text-gray-400 mb-4">
               Download all your data as a JSON file for backup or migration.
             </p>
             <button
@@ -195,11 +180,11 @@ const Settings: React.FC = () => {
               Export Data
             </button>
           </div>
-          
+
           {/* Import Data */}
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="font-semibold text-gray-900 mb-2">Import Data</h3>
-            <p className="text-sm text-gray-600 mb-4">
+          <div className="border border-gray-700 rounded-lg p-4">
+            <h3 className="font-semibold text-white mb-2">Import Data</h3>
+            <p className="text-sm text-gray-400 mb-4">
               Import data from a previously exported JSON file. This will replace all existing data.
             </p>
             <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors cursor-pointer w-fit">
@@ -213,14 +198,14 @@ const Settings: React.FC = () => {
               />
             </label>
           </div>
-          
+
           {/* Clear All Data */}
-          <div className="border border-red-200 rounded-lg p-4 bg-red-50">
-            <h3 className="font-semibold text-red-900 mb-2 flex items-center gap-2">
+          <div className="border border-red-800 rounded-lg p-4 bg-red-900/20">
+            <h3 className="font-semibold text-red-400 mb-2 flex items-center gap-2">
               <AlertCircle className="w-5 h-5" />
               Danger Zone
             </h3>
-            <p className="text-sm text-red-700 mb-4">
+            <p className="text-sm text-red-300/80 mb-4">
               Permanently delete all data. This action cannot be undone.
             </p>
             {!showConfirmClear ? (
@@ -232,9 +217,9 @@ const Settings: React.FC = () => {
                 Clear All Data
               </button>
             ) : (
-              <div className="bg-red-100 border border-red-300 rounded-lg p-4">
-                <p className="text-sm text-red-900 mb-3 font-semibold">
-                  ⚠️ Are you absolutely sure? This will permanently delete ALL data and cannot be undone!
+              <div className="bg-red-900/40 border border-red-700 rounded-lg p-4">
+                <p className="text-sm text-red-300 mb-3 font-semibold">
+                  Are you absolutely sure? This will permanently delete ALL data and cannot be undone!
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -245,7 +230,7 @@ const Settings: React.FC = () => {
                   </button>
                   <button
                     onClick={() => setShowConfirmClear(false)}
-                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+                    className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition-colors"
                   >
                     Cancel
                   </button>
@@ -255,13 +240,13 @@ const Settings: React.FC = () => {
           </div>
         </div>
       </div>
-      
+
       {/* Chart Preferences */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Chart Preferences</h2>
+      <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
+        <h2 className="text-xl font-semibold text-white mb-4">Chart Preferences</h2>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Default Time Range
             </label>
             <select
@@ -269,10 +254,10 @@ const Settings: React.FC = () => {
               onChange={(e) => updateSettings({
                 chartPreferences: {
                   ...settings.chartPreferences,
-                  defaultTimeRange: e.target.value as any
+                  defaultTimeRange: e.target.value as 'ALL' | '1M' | '3M' | '6M' | '1Y'
                 }
               })}
-              className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full md:w-64 px-3 py-2 border border-gray-600 rounded-md bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="1M">1 Month</option>
               <option value="3M">3 Months</option>
@@ -281,9 +266,9 @@ const Settings: React.FC = () => {
               <option value="ALL">All Time</option>
             </select>
           </div>
-          
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Default Chart Type
             </label>
             <select
@@ -291,10 +276,10 @@ const Settings: React.FC = () => {
               onChange={(e) => updateSettings({
                 chartPreferences: {
                   ...settings.chartPreferences,
-                  defaultChartType: e.target.value as any
+                  defaultChartType: e.target.value as 'line' | 'bar' | 'candlestick'
                 }
               })}
-              className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full md:w-64 px-3 py-2 border border-gray-600 rounded-md bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="line">Line Chart</option>
               <option value="bar">Bar Chart</option>
@@ -303,16 +288,16 @@ const Settings: React.FC = () => {
           </div>
         </div>
       </div>
-      
+
       {/* About */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">About</h2>
-        <div className="space-y-2 text-sm text-gray-600">
-          <p><strong>Version:</strong> 1.0.0</p>
-          <p><strong>Built with:</strong> React + TypeScript + Vite + TailwindCSS</p>
-          <p><strong>Data Storage:</strong> Browser localStorage</p>
+      <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
+        <h2 className="text-xl font-semibold text-white mb-4">About</h2>
+        <div className="space-y-2 text-sm text-gray-400">
+          <p><strong className="text-gray-300">Version:</strong> 1.0.0</p>
+          <p><strong className="text-gray-300">Built with:</strong> React + TypeScript + Vite + TailwindCSS</p>
+          <p><strong className="text-gray-300">Data Storage:</strong> Browser localStorage</p>
           <p className="pt-4 text-xs text-gray-500">
-            Investment Tracker © 2026 - A comprehensive tool for tracking stocks and options investments
+            Investment Tracker &copy; 2026 - A comprehensive tool for tracking stocks and options investments
           </p>
         </div>
       </div>

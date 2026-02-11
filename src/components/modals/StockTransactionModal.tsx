@@ -144,13 +144,13 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Account Selection */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Account *
           </label>
           <select
             value={formData.accountId}
             onChange={(e) => setFormData({ ...formData, accountId: e.target.value })}
-            className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Select Account</option>
             {accounts.map(account => (
@@ -160,32 +160,32 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
             ))}
           </select>
           {errors.accountId && (
-            <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.accountId}</p>
+            <p className="text-sm text-red-400 mt-1">{errors.accountId}</p>
           )}
         </div>
 
         {/* Date and Action */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Date *
             </label>
             <input
               type="date"
               value={formData.date}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Action *
             </label>
             <select
               value={formData.action}
               onChange={(e) => setFormData({ ...formData, action: e.target.value as StockTransaction['action'] })}
-              className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="buy">Buy</option>
               <option value="sell">Sell</option>
@@ -199,7 +199,7 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
 
         {/* Ticker */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Ticker Symbol *
           </label>
           <input
@@ -207,13 +207,13 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
             value={formData.ticker}
             onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
             placeholder="AAPL"
-            className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {errors.ticker && (
-            <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.ticker}</p>
+            <p className="text-sm text-red-400 mt-1">{errors.ticker}</p>
           )}
           {currentPosition && (
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-sm text-gray-400 mt-1">
               Current position: {currentPosition.shares} shares @ ${currentPosition.averageCostBasis.toFixed(2)}
             </p>
           )}
@@ -222,7 +222,7 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
         {/* Shares and Price */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Shares *
             </label>
             <input
@@ -231,15 +231,15 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
               onChange={(e) => setFormData({ ...formData, shares: parseFloat(e.target.value) || 0 })}
               step="0.01"
               min="0"
-              className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {errors.shares && (
-              <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.shares}</p>
+              <p className="text-sm text-red-400 mt-1">{errors.shares}</p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Price per Share *
             </label>
             <input
@@ -248,17 +248,17 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
               onChange={(e) => setFormData({ ...formData, pricePerShare: parseFloat(e.target.value) || 0 })}
               step="0.01"
               min="0"
-              className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {errors.pricePerShare && (
-              <p className="text-sm text-red-600 dark:text-red-400 mt-1">{errors.pricePerShare}</p>
+              <p className="text-sm text-red-400 mt-1">{errors.pricePerShare}</p>
             )}
           </div>
         </div>
 
         {/* Fees */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Fees
           </label>
           <input
@@ -267,22 +267,22 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
             onChange={(e) => setFormData({ ...formData, fees: parseFloat(e.target.value) || 0 })}
             step="0.01"
             min="0"
-            className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
         {/* Total Amount */}
-        <div className="bg-blue-50 dark:bg-gray-700 p-4 rounded-md">
+        <div className="bg-gray-700 p-4 rounded-md">
           <div className="flex justify-between items-center">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Total Amount:</span>
-            <span className="text-lg font-bold text-gray-900 dark:text-white">
+            <span className="text-sm font-medium text-gray-300">Total Amount:</span>
+            <span className="text-lg font-bold text-white">
               ${totalAmount.toFixed(2)}
             </span>
           </div>
           {formData.fees > 0 && (
             <div className="flex justify-between items-center mt-2">
-              <span className="text-sm text-gray-600 dark:text-gray-400">With Fees:</span>
-              <span className="text-sm font-medium text-gray-900 dark:text-white">
+              <span className="text-sm text-gray-400">With Fees:</span>
+              <span className="text-sm font-medium text-white">
                 ${(totalAmount + formData.fees).toFixed(2)}
               </span>
             </div>
@@ -291,24 +291,24 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
 
         {/* Notes */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Notes
           </label>
           <textarea
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
             rows={3}
-            className="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Optional notes about this transaction..."
           />
         </div>
 
         {/* Buttons */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-700">
           <button
             type="button"
             onClick={onClose}
-            className="px-6 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            className="px-6 py-2 rounded-md border border-gray-600 text-gray-300 hover:bg-gray-700 transition-colors"
           >
             Cancel
           </button>

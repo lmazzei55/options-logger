@@ -24,6 +24,17 @@ const Dashboard: React.FC = () => {
 
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [isOptionModalOpen, setIsOptionModalOpen] = useState(false);
+  const [holdingsSortField, setHoldingsSortField] = useState<'ticker' | 'shares' | 'averageCostBasis' | 'totalCostBasis' | 'marketValue' | 'unrealizedPL' | 'unrealizedPLPercent'>('marketValue');
+  const [holdingsSortDirection, setHoldingsSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleHoldingsSort = (field: typeof holdingsSortField) => {
+    if (holdingsSortField === field) {
+      setHoldingsSortDirection(holdingsSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setHoldingsSortField(field);
+      setHoldingsSortDirection('desc');
+    }
+  };
 
   const portfolioSummary = calculatePortfolioSummary(
     accounts, stockPositions, optionPositions, selectedAccountId || undefined
@@ -251,16 +262,12 @@ const Dashboard: React.FC = () => {
                 const value = position.marketValue || position.totalCostBasis;
                 const pl = position.unrealizedPL || 0;
                 const plPercent = position.unrealizedPLPercent || 0;
-                const account = accounts.find(a => a.id === position.accountId);
 
                 return (
                   <div key={`${position.ticker}-${position.accountId}`} className="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
                     <div>
                       <p className="font-semibold text-white">{position.ticker}</p>
                       <p className="text-sm text-gray-400">{position.shares} shares @ {formatCurrency(position.averageCostBasis)}</p>
-                      {!selectedAccountId && account && (
-                        <p className="text-xs text-blue-400 mt-1">{account.name}</p>
-                      )}
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-white">{formatCurrency(value)}</p>
@@ -318,6 +325,138 @@ const Dashboard: React.FC = () => {
             <p className="text-gray-500 text-center py-8">No upcoming expirations</p>
           )}
         </div>
+      </div>
+
+      {/* Comprehensive Holdings Overview */}
+      <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
+        <h2 className="text-lg font-semibold text-white mb-4">All Holdings</h2>
+        {stockPositions.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-700">
+                  <th 
+                    onClick={() => handleHoldingsSort('ticker')}
+                    className="text-left py-3 px-4 text-sm font-medium text-gray-400 cursor-pointer hover:bg-gray-800"
+                  >
+                    Ticker {holdingsSortField === 'ticker' && (holdingsSortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  {!selectedAccountId && (
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Account</th>
+                  )}
+                  <th 
+                    onClick={() => handleHoldingsSort('shares')}
+                    className="text-right py-3 px-4 text-sm font-medium text-gray-400 cursor-pointer hover:bg-gray-800"
+                  >
+                    Shares {holdingsSortField === 'shares' && (holdingsSortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th 
+                    onClick={() => handleHoldingsSort('averageCostBasis')}
+                    className="text-right py-3 px-4 text-sm font-medium text-gray-400 cursor-pointer hover:bg-gray-800"
+                  >
+                    Avg Cost {holdingsSortField === 'averageCostBasis' && (holdingsSortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th 
+                    onClick={() => handleHoldingsSort('totalCostBasis')}
+                    className="text-right py-3 px-4 text-sm font-medium text-gray-400 cursor-pointer hover:bg-gray-800"
+                  >
+                    Total Cost {holdingsSortField === 'totalCostBasis' && (holdingsSortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th 
+                    onClick={() => handleHoldingsSort('marketValue')}
+                    className="text-right py-3 px-4 text-sm font-medium text-gray-400 cursor-pointer hover:bg-gray-800"
+                  >
+                    Market Value {holdingsSortField === 'marketValue' && (holdingsSortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th 
+                    onClick={() => handleHoldingsSort('unrealizedPL')}
+                    className="text-right py-3 px-4 text-sm font-medium text-gray-400 cursor-pointer hover:bg-gray-800"
+                  >
+                    Gain/Loss {holdingsSortField === 'unrealizedPL' && (holdingsSortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th 
+                    onClick={() => handleHoldingsSort('unrealizedPLPercent')}
+                    className="text-right py-3 px-4 text-sm font-medium text-gray-400 cursor-pointer hover:bg-gray-800"
+                  >
+                    Return % {holdingsSortField === 'unrealizedPLPercent' && (holdingsSortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...stockPositions]
+                  .sort((a, b) => {
+                    let aVal: any = a[holdingsSortField];
+                    let bVal: any = b[holdingsSortField];
+                    
+                    // Handle market value fallback
+                    if (holdingsSortField === 'marketValue') {
+                      aVal = a.marketValue || a.totalCostBasis;
+                      bVal = b.marketValue || b.totalCostBasis;
+                    }
+                    
+                    const multiplier = holdingsSortDirection === 'asc' ? 1 : -1;
+                    
+                    if (typeof aVal === 'string' && typeof bVal === 'string') {
+                      return aVal.localeCompare(bVal) * multiplier;
+                    }
+                    return ((aVal || 0) - (bVal || 0)) * multiplier;
+                  })
+                  .map(position => {
+                    const value = position.marketValue || position.totalCostBasis;
+                    const pl = position.unrealizedPL || 0;
+                    const plPercent = position.unrealizedPLPercent || 0;
+                    const account = accounts.find(a => a.id === position.accountId);
+
+                    return (
+                      <tr key={`${position.ticker}-${position.accountId}`} className="border-b border-gray-800 hover:bg-gray-800">
+                        <td className="py-3 px-4 text-sm font-medium text-white">{position.ticker}</td>
+                        {!selectedAccountId && (
+                          <td className="py-3 px-4 text-sm text-blue-400">{account?.name}</td>
+                        )}
+                        <td className="py-3 px-4 text-sm text-right text-white">{position.shares.toLocaleString()}</td>
+                        <td className="py-3 px-4 text-sm text-right text-white">{formatCurrency(position.averageCostBasis)}</td>
+                        <td className="py-3 px-4 text-sm text-right text-white">{formatCurrency(position.totalCostBasis)}</td>
+                        <td className="py-3 px-4 text-sm text-right text-white">{formatCurrency(value)}</td>
+                        <td className={`py-3 px-4 text-sm text-right font-medium ${
+                          pl >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {formatCurrency(pl)}
+                        </td>
+                        <td className={`py-3 px-4 text-sm text-right font-medium ${
+                          plPercent >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {formatPercentage(plPercent)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-gray-700 bg-gray-800">
+                  <td className="py-3 px-4 text-sm font-bold text-white" colSpan={!selectedAccountId ? 2 : 1}>Total</td>
+                  <td className="py-3 px-4 text-sm text-right font-bold text-white">
+                    {stockPositions.reduce((sum, p) => sum + p.shares, 0).toLocaleString()}
+                  </td>
+                  <td className="py-3 px-4"></td>
+                  <td className="py-3 px-4 text-sm text-right font-bold text-white">
+                    {formatCurrency(stockPositions.reduce((sum, p) => sum + p.totalCostBasis, 0))}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-right font-bold text-white">
+                    {formatCurrency(stockPositions.reduce((sum, p) => sum + (p.marketValue || p.totalCostBasis), 0))}
+                  </td>
+                  <td className={`py-3 px-4 text-sm text-right font-bold ${
+                    stockPositions.reduce((sum, p) => sum + (p.unrealizedPL || 0), 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                  }`}>
+                    {formatCurrency(stockPositions.reduce((sum, p) => sum + (p.unrealizedPL || 0), 0))}
+                  </td>
+                  <td className="py-3 px-4"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        ) : (
+          <p className="text-gray-500 text-center py-8">No holdings yet. Add your first stock transaction to get started!</p>
+        )}
       </div>
 
       {/* Recent Transactions */}

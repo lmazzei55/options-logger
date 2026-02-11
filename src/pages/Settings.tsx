@@ -241,6 +241,69 @@ const Settings: React.FC = () => {
         </div>
       </div>
 
+      {/* Tax Settings */}
+      <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
+        <h2 className="text-xl font-semibold text-white mb-4">Tax Settings</h2>
+        <p className="text-sm text-gray-400 mb-4">
+          Configure tax rates for capital gains calculations. These rates are used for estimating tax liability on the Taxes page.
+        </p>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Short-Term Capital Gains Tax Rate (%)
+            </label>
+            <p className="text-xs text-gray-500 mb-2">
+              Applied to positions held for less than 365 days
+            </p>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              value={settings.taxRates?.shortTerm || 24}
+              onChange={(e) => updateSettings({
+                taxRates: {
+                  shortTerm: parseFloat(e.target.value) || 0,
+                  longTerm: settings.taxRates?.longTerm || 15
+                }
+              })}
+              className="w-full md:w-64 px-3 py-2 border border-gray-600 rounded-md bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Long-Term Capital Gains Tax Rate (%)
+            </label>
+            <p className="text-xs text-gray-500 mb-2">
+              Applied to positions held for 365 days or more
+            </p>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              value={settings.taxRates?.longTerm || 15}
+              onChange={(e) => updateSettings({
+                taxRates: {
+                  shortTerm: settings.taxRates?.shortTerm || 24,
+                  longTerm: parseFloat(e.target.value) || 0
+                }
+              })}
+              className="w-full md:w-64 px-3 py-2 border border-gray-600 rounded-md bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-4 mt-4">
+            <p className="text-sm text-yellow-300">
+              <strong>Note:</strong> These are simplified tax rates for estimation purposes only. 
+              Actual tax rates depend on your income level, filing status, and jurisdiction. 
+              Consult a tax professional for accurate tax planning.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Chart Preferences */}
       <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
         <h2 className="text-xl font-semibold text-white mb-4">Chart Preferences</h2>

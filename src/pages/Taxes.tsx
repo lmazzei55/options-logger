@@ -4,8 +4,22 @@ import { formatCurrency } from '../utils/calculations';
 import { TrendingUp, TrendingDown, Calendar, DollarSign } from 'lucide-react';
 
 const Taxes: React.FC = () => {
-  const { accounts, selectedAccountId, stockTransactions, optionTransactions, stockPositions } = useAppContext();
+  const { accounts, selectedAccountId, stockTransactions, optionTransactions, stockPositions, settings } = useAppContext();
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [taxLotsSortField, setTaxLotsSortField] = useState<'ticker' | 'shares' | 'daysHeld' | 'costBasis' | 'unrealizedGain'>('ticker');
+  const [taxLotsSortDirection, setTaxLotsSortDirection] = useState<'asc' | 'desc'>('asc');
+  
+  const shortTermRate = (settings.taxRates?.shortTerm || 24) / 100;
+  const longTermRate = (settings.taxRates?.longTerm || 15) / 100;
+
+  const handleTaxLotsSort = (field: typeof taxLotsSortField) => {
+    if (taxLotsSortField === field) {
+      setTaxLotsSortDirection(taxLotsSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setTaxLotsSortField(field);
+      setTaxLotsSortDirection('asc');
+    }
+  };
 
   // Filter transactions by selected account
   const filteredStockTxns = useMemo(() => {
@@ -140,14 +154,11 @@ const Taxes: React.FC = () => {
     };
   }, [taxLots]);
 
-  // Estimate tax liability (simplified using standard brackets)
+  // Estimate tax liability using configured tax rates
   const estimatedTax = useMemo(() => {
-    // Simplified tax calculation
-    // Short-term gains taxed as ordinary income (assume 24% bracket)
-    // Long-term gains taxed at 15% (for most taxpayers)
-    const shortTermTax = Math.max(0, realizedGains.shortTermGains * 0.24);
-    const longTermTax = Math.max(0, realizedGains.longTermGains * 0.15);
-    const optionTax = Math.max(0, realizedGains.optionPremium * 0.24); // Options are short-term
+    const shortTermTax = Math.max(0, realizedGains.shortTermGains * shortTermRate);
+    const longTermTax = Math.max(0, realizedGains.longTermGains * longTermRate);
+    const optionTax = Math.max(0, realizedGains.optionPremium * shortTermRate); // Options are short-term
 
     return {
       shortTermTax,
@@ -155,7 +166,7 @@ const Taxes: React.FC = () => {
       optionTax,
       totalTax: shortTermTax + longTermTax + optionTax
     };
-  }, [realizedGains]);
+  }, [realizedGains, shortTermRate, longTermRate]);
 
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
 
@@ -263,27 +274,74 @@ const Taxes: React.FC = () => {
           <table className="w-full">
             <thead className="bg-gray-800 border-b border-gray-700">
               <tr>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Ticker</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Shares</th>
+                <th 
+                  onClick={() => handleTaxLotsSort('ticker')}
+                  className="text-left py-3 px-4 text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-700"
+                >
+                  Ticker {taxLotsSortField === 'ticker' && (taxLotsSortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th 
+                  onClick={() => handleTaxLotsSort('shares')}
+                  className="text-right py-3 px-4 text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-700"
+                >
+                  Shares {taxLotsSortField === 'shares' && (taxLotsSortDirection === 'asc' ? '↑' : '↓')}
+                </th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Purchase Date</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Days Held</th>
+                <th 
+                  onClick={() => handleTaxLotsSort('daysHeld')}
+                  className="text-right py-3 px-4 text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-700"
+                >
+                  Days Held {taxLotsSortField === 'daysHeld' && (taxLotsSortDirection === 'asc' ? '↑' : '↓')}
+                </th>
                 <th className="text-center py-3 px-4 text-sm font-medium text-gray-300">Tax Treatment</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Cost Basis</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Unrealized Gain</th>
+                <th 
+                  onClick={() => handleTaxLotsSort('costBasis')}
+                  className="text-right py-3 px-4 text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-700"
+                >
+                  Cost Basis {taxLotsSortField === 'costBasis' && (taxLotsSortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th 
+                  onClick={() => handleTaxLotsSort('unrealizedGain')}
+                  className="text-right py-3 px-4 text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-700"
+                >
+                  Unrealized Gain {taxLotsSortField === 'unrealizedGain' && (taxLotsSortDirection === 'asc' ? '↑' : '↓')}
+                </th>
                 {!selectedAccountId && (
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Account</th>
                 )}
               </tr>
             </thead>
             <tbody>
-              {taxLots.length === 0 ? (
+              {[...taxLots]
+                .sort((a, b) => {
+                  const aVal = a[taxLotsSortField];
+                  const bVal = b[taxLotsSortField];
+                  const multiplier = taxLotsSortDirection === 'asc' ? 1 : -1;
+                  
+                  if (typeof aVal === 'string' && typeof bVal === 'string') {
+                    return aVal.localeCompare(bVal) * multiplier;
+                  }
+                  return ((aVal as number) - (bVal as number)) * multiplier;
+                })
+                .length === 0 ? (
                 <tr>
                   <td colSpan={!selectedAccountId ? 8 : 7} className="text-center py-8 text-gray-500">
                     No tax lots found
                   </td>
                 </tr>
               ) : (
-                taxLots.map((lot, index) => {
+                [...taxLots]
+                  .sort((a, b) => {
+                    const aVal = a[taxLotsSortField];
+                    const bVal = b[taxLotsSortField];
+                    const multiplier = taxLotsSortDirection === 'asc' ? 1 : -1;
+                    
+                    if (typeof aVal === 'string' && typeof bVal === 'string') {
+                      return aVal.localeCompare(bVal) * multiplier;
+                    }
+                    return ((aVal as number) - (bVal as number)) * multiplier;
+                  })
+                  .map((lot, index) => {
                   const account = accounts.find(a => a.id === lot.accountId);
                   return (
                     <tr key={index} className="border-b border-gray-800 hover:bg-gray-800">
@@ -330,15 +388,15 @@ const Taxes: React.FC = () => {
         </p>
         <div className="space-y-3">
           <div className="flex justify-between items-center py-2 border-b border-gray-800">
-            <span className="text-gray-300">Short-Term Gains Tax (24% rate)</span>
+            <span className="text-gray-300">Short-Term Gains Tax ({(shortTermRate * 100).toFixed(1)}% rate)</span>
             <span className="text-white font-medium">{formatCurrency(estimatedTax.shortTermTax)}</span>
           </div>
           <div className="flex justify-between items-center py-2 border-b border-gray-800">
-            <span className="text-gray-300">Long-Term Gains Tax (15% rate)</span>
+            <span className="text-gray-300">Long-Term Gains Tax ({(longTermRate * 100).toFixed(1)}% rate)</span>
             <span className="text-white font-medium">{formatCurrency(estimatedTax.longTermTax)}</span>
           </div>
           <div className="flex justify-between items-center py-2 border-b border-gray-800">
-            <span className="text-gray-300">Option Premium Tax (24% rate)</span>
+            <span className="text-gray-300">Option Premium Tax ({(shortTermRate * 100).toFixed(1)}% rate)</span>
             <span className="text-white font-medium">{formatCurrency(estimatedTax.optionTax)}</span>
           </div>
           <div className="flex justify-between items-center py-3 bg-gray-800 rounded-lg px-4">

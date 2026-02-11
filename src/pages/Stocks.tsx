@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { Plus, Edit2, Trash2, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X } from 'lucide-react';
 import StockTransactionModal from '../components/modals/StockTransactionModal';
 import type { StockTransaction } from '../types';
 
@@ -64,6 +64,21 @@ const Stocks: React.FC = () => {
       setEditingTransaction(recentTransaction);
       setIsModalOpen(true);
     }
+  };
+
+  const handleClosePosition = (ticker: string, accountId: string) => {
+    // Open modal with sell action pre-selected for this position
+    setEditingTransaction({
+      id: '',
+      accountId,
+      ticker,
+      action: 'sell',
+      shares: 0,
+      pricePerShare: 0,
+      date: new Date().toISOString().split('T')[0],
+      fees: 0
+    } as StockTransaction);
+    setIsModalOpen(true);
   };
 
   const handleDeletePosition = (ticker: string, accountId: string) => {
@@ -222,6 +237,13 @@ const Stocks: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => handleClosePosition(position.ticker, position.accountId)}
+                          className="text-green-400 hover:text-green-300"
+                          title="Close position (sell)"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => handleEditPosition(position.ticker, position.accountId)}
                           className="text-blue-400 hover:text-blue-300"

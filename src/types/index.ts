@@ -156,6 +156,10 @@ export interface AppSettings {
     defaultTimeRange: '1M' | '3M' | '6M' | '1Y' | 'ALL';
     defaultChartType: 'line' | 'bar' | 'candlestick';
   };
+  taxRates?: {
+    shortTerm: number;
+    longTerm: number;
+  };
 }
 
 // Filter Types

@@ -707,7 +707,7 @@ const Options: React.FC = () => {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Transaction Modal */}
       <OptionTransactionModal
         isOpen={isModalOpen}
         onClose={() => {
@@ -716,6 +716,101 @@ const Options: React.FC = () => {
         }}
         transaction={editingTransaction}
       />
+
+      {/* Close Position Modal */}
+      {closingPositionId && (() => {
+        const position = optionPositions.find(p => p.id === closingPositionId);
+        if (!position) return null;
+        const openTxn = optionTransactions.find(t =>
+          t.ticker === position.ticker &&
+          t.strikePrice === position.strikePrice &&
+          t.expirationDate === position.expirationDate &&
+          t.accountId === position.accountId &&
+          (t.action === 'sell-to-open' || t.action === 'buy-to-open')
+        );
+        const isSeller = openTxn?.action === 'sell-to-open';
+        
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-900 rounded-lg shadow-xl max-w-md w-full border border-gray-800">
+              <div className="p-6">
+                <h3 className="text-xl font-bold text-white mb-4">Close Position</h3>
+                <div className="mb-4">
+                  <p className="text-gray-300 font-medium">
+                    {position.ticker} ${position.strikePrice} {position.optionType.toUpperCase()}
+                  </p>
+                  <p className="text-sm text-gray-400">
+                    {position.contracts} contract{position.contracts > 1 ? 's' : ''} • {position.strategy}
+                  </p>
+                </div>
+
+                <div className="mb-4">
+                  <label className="text-sm text-gray-400 block mb-2">
+                    Closing price per share (for manual close)
+                  </label>
+                  <input
+                    type="number"
+                    value={closingPrice}
+                    onChange={(e) => setClosingPrice(e.target.value)}
+                    placeholder="0.00"
+                    step="0.01"
+                    min="0"
+                    className="w-full px-3 py-2 rounded-md border border-gray-600 bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="mb-6">
+                  <label className="text-sm text-gray-400 block mb-2">
+                    Closing fees (optional)
+                  </label>
+                  <input
+                    type="number"
+                    value={closingFees}
+                    onChange={(e) => setClosingFees(e.target.value)}
+                    placeholder="0.00"
+                    step="0.01"
+                    min="0"
+                    className="w-full px-3 py-2 rounded-md border border-gray-600 bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <p className="text-sm text-gray-400 mb-4">How was this position closed?</p>
+
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => handleClosePosition(closingPositionId, 'closed')}
+                    className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                  >
+                    {isSeller ? 'Bought to Close' : 'Sold to Close'}
+                  </button>
+                  <button
+                    onClick={() => handleClosePosition(closingPositionId, 'expired')}
+                    className="w-full px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                  >
+                    Expired Worthless
+                  </button>
+                  <button
+                    onClick={() => handleClosePosition(closingPositionId, 'assigned')}
+                    className="w-full px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+                  >
+                    Assigned
+                  </button>
+                  <button
+                    onClick={() => {
+                      setClosingPositionId(null);
+                      setClosingPrice('');
+                      setClosingFees('');
+                    }}
+                    className="w-full px-4 py-2 bg-gray-700 text-gray-300 rounded-md hover:bg-gray-600 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

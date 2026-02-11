@@ -90,6 +90,10 @@ const defaultSettings: AppSettings = {
   chartPreferences: {
     defaultTimeRange: '6M',
     defaultChartType: 'line'
+  },
+  taxRates: {
+    shortTerm: 24,
+    longTerm: 15
   }
 };
 

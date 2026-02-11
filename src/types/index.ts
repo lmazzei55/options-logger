@@ -173,12 +173,14 @@ export interface TransactionFilters {
 // Analytics Types
 export interface PortfolioSummary {
   totalValue: number;
-  totalCash: number;
+  totalCash: number;         // Total cash in accounts (includes collateral)
+  availableCash: number;     // Cash available for new trades (excludes collateral)
+  activeCollateral: number;  // Cash reserved as collateral for open option positions
   totalInvested: number;
   totalPL: number;
   totalPLPercent: number;
   stockValue: number;
-  optionValue: number;
+  optionPremiumValue: number; // Net premium from open option positions
   dayChange?: number;
   dayChangePercent?: number;
 }

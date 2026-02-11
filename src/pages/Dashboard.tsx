@@ -7,7 +7,7 @@ import {
   formatPercentage,
   daysUntilExpiration
 } from '../utils/calculations';
-import { TrendingUp, TrendingDown, DollarSign, PieChart, Calendar, Plus } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, PieChart, Calendar, Plus, Shield, Wallet } from 'lucide-react';
 import StockTransactionModal from '../components/modals/StockTransactionModal';
 import OptionTransactionModal from '../components/modals/OptionTransactionModal';
 
@@ -80,7 +80,7 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Portfolio Summary Cards */}
+      {/* Portfolio Summary Cards - Row 1 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
           <div className="flex items-center justify-between">
@@ -88,6 +88,9 @@ const Dashboard: React.FC = () => {
               <p className="text-sm text-gray-400">Total Portfolio Value</p>
               <p className="text-2xl font-bold text-white mt-1">
                 {formatCurrency(portfolioSummary.totalValue)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Cash + Stocks
               </p>
             </div>
             <div className="bg-blue-900/50 p-3 rounded-full">
@@ -102,6 +105,9 @@ const Dashboard: React.FC = () => {
               <p className="text-sm text-gray-400">Total Cash</p>
               <p className="text-2xl font-bold text-white mt-1">
                 {formatCurrency(portfolioSummary.totalCash)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Available: {formatCurrency(portfolioSummary.availableCash)}
               </p>
             </div>
             <div className="bg-green-900/50 p-3 rounded-full">
@@ -155,6 +161,60 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* Portfolio Breakdown - Row 2 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-400 mb-1">Stock Holdings</p>
+              <p className="text-xl font-bold text-white">
+                {formatCurrency(portfolioSummary.stockValue)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {stockPositions.length} position{stockPositions.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <div className="bg-blue-900/50 p-3 rounded-full">
+              <TrendingUp className="w-5 h-5 text-blue-400" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-400 mb-1">Active Collateral</p>
+              <p className="text-xl font-bold text-yellow-400">
+                {formatCurrency(portfolioSummary.activeCollateral)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Reserved for open options
+              </p>
+            </div>
+            <div className="bg-yellow-900/50 p-3 rounded-full">
+              <Shield className="w-5 h-5 text-yellow-400" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-400 mb-1">Available to Trade</p>
+              <p className="text-xl font-bold text-green-400">
+                {formatCurrency(portfolioSummary.availableCash)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Cash minus collateral
+              </p>
+            </div>
+            <div className="bg-green-900/50 p-3 rounded-full">
+              <Wallet className="w-5 h-5 text-green-400" />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Stock Positions */}
@@ -171,7 +231,7 @@ const Dashboard: React.FC = () => {
                   <div key={`${position.ticker}-${position.accountId}`} className="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
                     <div>
                       <p className="font-semibold text-white">{position.ticker}</p>
-                      <p className="text-sm text-gray-400">{position.shares} shares</p>
+                      <p className="text-sm text-gray-400">{position.shares} shares @ {formatCurrency(position.averageCostBasis)}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-white">{formatCurrency(value)}</p>
@@ -282,37 +342,6 @@ const Dashboard: React.FC = () => {
         ) : (
           <p className="text-gray-500 text-center py-8">No transactions yet. Add your first transaction to get started!</p>
         )}
-      </div>
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
-          <p className="text-sm text-gray-400 mb-2">Stock Positions</p>
-          <p className="text-3xl font-bold text-white">{stockPositions.length}</p>
-          <p className="text-sm text-gray-400 mt-1">
-            Value: {formatCurrency(portfolioSummary.stockValue)}
-          </p>
-        </div>
-
-        <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
-          <p className="text-sm text-gray-400 mb-2">Active Options</p>
-          <p className="text-3xl font-bold text-white">
-            {optionPositions.filter(p => p.status === 'open').length}
-          </p>
-          <p className="text-sm text-gray-400 mt-1">
-            Premium: {formatCurrency(optionsAnalytics.projectedPremium)}
-          </p>
-        </div>
-
-        <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
-          <p className="text-sm text-gray-400 mb-2">Accounts</p>
-          <p className="text-3xl font-bold text-white">
-            {selectedAccountId ? 1 : accounts.length}
-          </p>
-          <p className="text-sm text-gray-400 mt-1">
-            Total Cash: {formatCurrency(portfolioSummary.totalCash)}
-          </p>
-        </div>
       </div>
 
       {/* Modals */}

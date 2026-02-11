@@ -14,7 +14,7 @@ const Options: React.FC = () => {
   const {
     optionPositions,
     optionTransactions,
-    addOptionTransaction,
+    closeOptionPosition,
     deleteOptionTransaction,
     selectedAccountId,
     accounts
@@ -25,6 +25,7 @@ const Options: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [closingPositionId, setClosingPositionId] = useState<string | null>(null);
+  const [closingPrice, setClosingPrice] = useState<string>('');
 
   const analytics = calculateOptionsAnalytics(
     optionTransactions, optionPositions, selectedAccountId || undefined
@@ -43,45 +44,20 @@ const Options: React.FC = () => {
   const closedPositions = filteredPositions.filter(p => p.status !== 'open');
 
   const handleClosePosition = (positionId: string, closeType: 'closed' | 'expired' | 'assigned') => {
-    const position = optionPositions.find(p => p.id === positionId);
-    if (!position) return;
-
-    // Find the original open transaction for this position
-    const openTxn = optionTransactions.find(t =>
-      t.ticker === position.ticker &&
-      t.strikePrice === position.strikePrice &&
-      t.expirationDate === position.expirationDate &&
-      t.accountId === position.accountId &&
-      (t.action === 'sell-to-open' || t.action === 'buy-to-open')
-    );
-
-    if (!openTxn) return;
-
-    // Create a closing transaction
-    const closingAction = openTxn.action === 'sell-to-open' ? 'buy-to-close' : 'sell-to-close';
-    const closingTransaction: Omit<OptionTransaction, 'id'> = {
-      accountId: position.accountId,
-      ticker: position.ticker,
-      optionType: position.optionType,
-      strikePrice: position.strikePrice,
-      expirationDate: position.expirationDate,
-      action: closingAction as OptionTransaction['action'],
-      contracts: position.contracts,
-      premiumPerShare: closeType === 'expired' ? 0 : openTxn.premiumPerShare * 0.5,
-      totalPremium: closeType === 'expired' ? 0 : openTxn.totalPremium * 0.5,
-      fees: 0,
-      transactionDate: new Date().toISOString().split('T')[0],
-      strategy: position.strategy,
-      status: closeType,
-      notes: closeType === 'expired'
-        ? 'Option expired worthless'
-        : closeType === 'assigned'
-          ? 'Option was assigned'
-          : 'Position closed manually'
-    };
-
-    addOptionTransaction(closingTransaction);
+    if (closeType === 'closed') {
+      // For manual close, use the entered closing price
+      const price = parseFloat(closingPrice);
+      if (isNaN(price) || price < 0) {
+        alert('Please enter a valid closing price per share');
+        return;
+      }
+      closeOptionPosition(positionId, closeType, price);
+    } else {
+      // For expired/assigned, no closing price needed
+      closeOptionPosition(positionId, closeType);
+    }
     setClosingPositionId(null);
+    setClosingPrice('');
   };
 
   const handleDeletePosition = (positionId: string) => {
@@ -108,7 +84,8 @@ const Options: React.FC = () => {
       t.ticker === position.ticker &&
       t.strikePrice === position.strikePrice &&
       t.expirationDate === position.expirationDate &&
-      t.accountId === position.accountId
+      t.accountId === position.accountId &&
+      (t.action === 'sell-to-open' || t.action === 'buy-to-open')
     );
 
     if (txn) {
@@ -134,10 +111,20 @@ const Options: React.FC = () => {
       ? calculateAnnualizedReturn(
           position.totalPremium,
           position.collateralRequired,
-          Math.abs(daysUntil)
+          Math.abs(daysUntil) || 1
         )
       : 0;
     const isClosing = closingPositionId === position.id;
+
+    // Find the original open transaction to determine if seller or buyer
+    const openTxn = optionTransactions.find(t =>
+      t.ticker === position.ticker &&
+      t.strikePrice === position.strikePrice &&
+      t.expirationDate === position.expirationDate &&
+      t.accountId === position.accountId &&
+      (t.action === 'sell-to-open' || t.action === 'buy-to-open')
+    );
+    const isSeller = openTxn?.action === 'sell-to-open';
 
     return (
       <div className={`bg-gray-900 rounded-lg shadow p-6 border-l-4 border border-gray-800 ${
@@ -164,7 +151,10 @@ const Options: React.FC = () => {
                   <Edit2 className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => setClosingPositionId(isClosing ? null : position.id)}
+                  onClick={() => {
+                    setClosingPositionId(isClosing ? null : position.id);
+                    setClosingPrice('');
+                  }}
                   className="text-yellow-400 hover:text-yellow-300 p-1"
                   title="Close position"
                 >
@@ -195,12 +185,46 @@ const Options: React.FC = () => {
         {isClosing && (
           <div className="bg-gray-800 rounded-lg p-4 mb-4 border border-gray-700">
             <p className="text-sm text-gray-300 mb-3 font-medium">How was this position closed?</p>
+            
+            {/* Closing price input for manual close */}
+            <div className="mb-3">
+              <label className="text-xs text-gray-400 block mb-1">
+                Closing price per share (for manual close)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={closingPrice}
+                onChange={(e) => setClosingPrice(e.target.value)}
+                placeholder="e.g., 1.50"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {closingPrice && !isNaN(parseFloat(closingPrice)) && (
+                <div className="mt-2 text-xs text-gray-400">
+                  <p>
+                    Total close cost: {formatCurrency(parseFloat(closingPrice) * position.contracts * 100)}
+                  </p>
+                  {isSeller && (
+                    <p className={`font-semibold ${
+                      position.totalPremium - parseFloat(closingPrice) * position.contracts * 100 >= 0
+                        ? 'text-green-400' : 'text-red-400'
+                    }`}>
+                      Estimated P&L: {formatCurrency(
+                        position.totalPremium - parseFloat(closingPrice) * position.contracts * 100 - (openTxn?.fees || 0)
+                      )}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => handleClosePosition(position.id, 'closed')}
                 className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700"
               >
-                Bought/Sold to Close
+                {isSeller ? 'Bought to Close' : 'Sold to Close'}
               </button>
               <button
                 onClick={() => handleClosePosition(position.id, 'expired')}
@@ -215,11 +239,34 @@ const Options: React.FC = () => {
                 Assigned
               </button>
               <button
-                onClick={() => setClosingPositionId(null)}
+                onClick={() => {
+                  setClosingPositionId(null);
+                  setClosingPrice('');
+                }}
                 className="px-3 py-1.5 bg-gray-700 text-gray-300 text-sm rounded-md hover:bg-gray-600"
               >
                 Cancel
               </button>
+            </div>
+
+            {/* Explanation of what each action does */}
+            <div className="mt-3 text-xs text-gray-500 space-y-1">
+              {isSeller ? (
+                <>
+                  <p><strong className="text-gray-400">Bought to Close:</strong> Pay to close the position. Enter closing price above.</p>
+                  <p><strong className="text-gray-400">Expired Worthless:</strong> Keep full premium. No action needed.</p>
+                  <p><strong className="text-gray-400">Assigned:</strong> {position.optionType === 'put' 
+                    ? `Buy ${position.contracts * 100} shares of ${position.ticker} at $${position.strikePrice}. Stock position will be created.`
+                    : `Sell ${position.contracts * 100} shares of ${position.ticker} at $${position.strikePrice}. Stock will be removed.`
+                  }</p>
+                </>
+              ) : (
+                <>
+                  <p><strong className="text-gray-400">Sold to Close:</strong> Sell the option to close. Enter closing price above.</p>
+                  <p><strong className="text-gray-400">Expired Worthless:</strong> Lose full premium paid.</p>
+                  <p><strong className="text-gray-400">Assigned:</strong> Exercise the option.</p>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -242,19 +289,19 @@ const Options: React.FC = () => {
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-400">Days {position.status === 'open' ? 'Until' : 'Held'}</p>
+            <p className="text-xs text-gray-400">Days Until</p>
             <p className={`text-sm font-semibold ${
               isExpiringSoon ? 'text-yellow-400' : 'text-white'
             }`}>
-              {Math.abs(daysUntil)}
+              {daysUntil >= 0 ? daysUntil : 'Expired'}
             </p>
           </div>
         </div>
 
-        {position.collateralRequired && (
+        {position.collateralRequired && position.status === 'open' && (
           <div className="bg-gray-800 rounded-lg p-3 mb-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-400">Collateral</span>
+              <span className="text-xs text-gray-400">Collateral</span>
               <span className="text-sm font-semibold text-white">
                 {formatCurrency(position.collateralRequired)}
               </span>
@@ -270,11 +317,11 @@ const Options: React.FC = () => {
           </div>
         )}
 
-        {position.realizedPL !== undefined && (
+        {position.realizedPL !== undefined && position.status !== 'open' && (
           <div className={`text-sm font-semibold ${
             position.realizedPL >= 0 ? 'text-green-400' : 'text-red-400'
           }`}>
-            P&L: {formatCurrency(position.realizedPL)}
+            Realized P&L: {formatCurrency(position.realizedPL)}
           </div>
         )}
 

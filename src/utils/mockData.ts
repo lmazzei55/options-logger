@@ -11,7 +11,31 @@ export const generateMockData = () => {
   const now = new Date();
   const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
 
-  // Mock Accounts
+  // =============================================
+  // ACCOUNTS
+  // =============================================
+  // Cash balances reflect the RESULT of all transactions below.
+  // loadMockData() sets these directly (bypasses addTransaction cash logic).
+  //
+  // acc-1: Main Brokerage (initialCash = $50,000)
+  //   Stock buys: AAPL 50sh * $175.50 = -$8,775 | MSFT 30sh * $380 = -$11,400
+  //   Option premium: CC on AAPL expired +$350 -$1 fee = +$349
+  //   Option premium: CSP on MSFT open +$275 -$1 fee = +$274
+  //   currentCash = 50000 - 8775 - 11400 + 349 + 274 = $30,448
+  //
+  // acc-2: Retirement IRA (initialCash = $100,000)
+  //   Stock buys: SPY 50sh * $450 = -$22,500 | VTI 50sh * $220 = -$11,000
+  //   No options (IRA, long-term only)
+  //   currentCash = 100000 - 22500 - 11000 = $66,500
+  //
+  // acc-3: Options Trading (initialCash = $75,000)
+  //   Option premium: CSP AAPL open +$350 -$1 fee = +$349
+  //   Option premium: CSP SPY closed: open +$1200 -$2 fee, close -$450 = net +$748
+  //   Option premium: CSP NVDA assigned: +$400 -$1 fee = +$399, then stock buy -$20,000
+  //   Option premium: Long call TSLA closed: open -$2500 -$2 fee, close +$3600 = net +$1098
+  //   Option premium: CSP SPY open +$375 -$1 fee = +$374
+  //   currentCash = 75000 + 349 + 748 + 399 - 20000 + 1098 + 374 = $57,968
+
   const accounts: InvestmentAccount[] = [
     {
       id: 'acc-1',
@@ -20,7 +44,7 @@ export const generateMockData = () => {
       broker: 'Fidelity',
       accountNumber: '1234',
       initialCash: 50000,
-      currentCash: 15420.50,
+      currentCash: 30448,
       currency: 'USD',
       isActive: true,
       createdDate: sixMonthsAgo.toISOString().split('T')[0],
@@ -33,7 +57,7 @@ export const generateMockData = () => {
       broker: 'Vanguard',
       accountNumber: '5678',
       initialCash: 100000,
-      currentCash: 25000,
+      currentCash: 66500,
       currency: 'USD',
       isActive: true,
       createdDate: sixMonthsAgo.toISOString().split('T')[0],
@@ -45,8 +69,8 @@ export const generateMockData = () => {
       type: 'margin',
       broker: 'Tastyworks',
       accountNumber: '9012',
-      initialCash: 30000,
-      currentCash: 8750.25,
+      initialCash: 75000,
+      currentCash: 57968,
       currency: 'USD',
       isActive: true,
       createdDate: sixMonthsAgo.toISOString().split('T')[0],
@@ -54,22 +78,13 @@ export const generateMockData = () => {
     }
   ];
 
-  // Mock Stock Transactions
+  // =============================================
+  // STOCK TRANSACTIONS
+  // =============================================
+  const nvdaAssignmentId = generateId();
+
   const stockTransactions: StockTransaction[] = [
-    // AAPL positions
-    {
-      id: generateId(),
-      accountId: 'acc-1',
-      ticker: 'AAPL',
-      companyName: 'Apple Inc.',
-      action: 'buy',
-      shares: 100,
-      pricePerShare: 175.50,
-      totalAmount: 17550,
-      fees: 0,
-      date: new Date(now.getTime() - 150 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      notes: 'Initial position'
-    },
+    // acc-1: AAPL position - 50 shares @ $175.50
     {
       id: generateId(),
       accountId: 'acc-1',
@@ -77,86 +92,79 @@ export const generateMockData = () => {
       companyName: 'Apple Inc.',
       action: 'buy',
       shares: 50,
-      pricePerShare: 182.25,
-      totalAmount: 9112.50,
+      pricePerShare: 175.50,
+      totalAmount: 8775,
       fees: 0,
-      date: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      notes: 'Added to position'
+      date: new Date(now.getTime() - 150 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      notes: 'Initial position - 50 shares'
     },
-    // MSFT position
+    // acc-1: MSFT position - 30 shares @ $380
     {
       id: generateId(),
       accountId: 'acc-1',
       ticker: 'MSFT',
       companyName: 'Microsoft Corporation',
       action: 'buy',
-      shares: 75,
+      shares: 30,
       pricePerShare: 380.00,
-      totalAmount: 28500,
+      totalAmount: 11400,
       fees: 0,
       date: new Date(now.getTime() - 120 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       notes: 'Tech diversification'
     },
-    // TSLA position (sold)
-    {
-      id: generateId(),
-      accountId: 'acc-1',
-      ticker: 'TSLA',
-      companyName: 'Tesla Inc.',
-      action: 'buy',
-      shares: 50,
-      pricePerShare: 245.00,
-      totalAmount: 12250,
-      fees: 0,
-      date: new Date(now.getTime() - 100 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      notes: 'Speculative play'
-    },
-    {
-      id: generateId(),
-      accountId: 'acc-1',
-      ticker: 'TSLA',
-      companyName: 'Tesla Inc.',
-      action: 'sell',
-      shares: 50,
-      pricePerShare: 268.50,
-      totalAmount: 13425,
-      fees: 0,
-      date: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      notes: 'Took profits'
-    },
-    // SPY position in retirement account
+    // acc-2: SPY position - 50 shares @ $450
     {
       id: generateId(),
       accountId: 'acc-2',
       ticker: 'SPY',
       companyName: 'SPDR S&P 500 ETF',
       action: 'buy',
-      shares: 200,
+      shares: 50,
       pricePerShare: 450.00,
-      totalAmount: 90000,
+      totalAmount: 22500,
       fees: 0,
       date: new Date(now.getTime() - 160 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       notes: 'Core holding'
     },
-    // NVDA position
+    // acc-2: VTI position - 50 shares @ $220
     {
       id: generateId(),
+      accountId: 'acc-2',
+      ticker: 'VTI',
+      companyName: 'Vanguard Total Stock Market ETF',
+      action: 'buy',
+      shares: 50,
+      pricePerShare: 220.00,
+      totalAmount: 11000,
+      fees: 0,
+      date: new Date(now.getTime() - 140 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      notes: 'Broad market exposure'
+    },
+    // acc-3: NVDA from CSP assignment - 100 shares @ $200
+    {
+      id: nvdaAssignmentId,
       accountId: 'acc-3',
       ticker: 'NVDA',
       companyName: 'NVIDIA Corporation',
       action: 'buy',
       shares: 100,
-      pricePerShare: 485.00,
-      totalAmount: 48500,
+      pricePerShare: 200.00,
+      totalAmount: 20000,
       fees: 0,
-      date: new Date(now.getTime() - 80 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      notes: 'AI play'
+      date: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      notes: 'Assigned from cash-secured-put: 1 put contract(s) at $200 strike'
     }
   ];
 
-  // Mock Option Transactions
+  // =============================================
+  // OPTION TRANSACTIONS
+  // =============================================
   const optionTransactions: OptionTransaction[] = [
-    // Open cash-secured put on AAPL
+    // --- OPEN POSITIONS ---
+
+    // acc-3: Open CSP on AAPL (1 contract, $170 strike, expiring in 15 days)
+    // Premium: 1 * 100 * $3.50 = $350
+    // Collateral: 1 * 100 * $170 = $17,000
     {
       id: generateId(),
       accountId: 'acc-3',
@@ -164,19 +172,72 @@ export const generateMockData = () => {
       strategy: 'cash-secured-put',
       optionType: 'put',
       action: 'sell-to-open',
-      contracts: 2,
+      contracts: 1,
       strikePrice: 170.00,
       premiumPerShare: 3.50,
-      totalPremium: 700,
-      fees: 2,
+      totalPremium: 350,
+      fees: 1,
       expirationDate: new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       transactionDate: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       status: 'open',
-      collateralRequired: 34000,
+      collateralRequired: 17000,
       collateralReleased: false,
-      notes: 'Weekly CSP'
+      notes: 'Monthly CSP on AAPL'
     },
-    // Expired worthless covered call
+
+    // acc-1: Open CSP on MSFT (1 contract, $370 strike, expiring in 25 days)
+    // Premium: 1 * 100 * $2.75 = $275
+    // Collateral: 1 * 100 * $370 = $37,000
+    // Note: acc-1 has $30,448 cash. Collateral > cash, but this is a brokerage account.
+    // In practice, margin might cover this. We show it as a warning in the UI.
+    {
+      id: generateId(),
+      accountId: 'acc-1',
+      ticker: 'MSFT',
+      strategy: 'cash-secured-put',
+      optionType: 'put',
+      action: 'sell-to-open',
+      contracts: 1,
+      strikePrice: 370.00,
+      premiumPerShare: 2.75,
+      totalPremium: 275,
+      fees: 1,
+      expirationDate: new Date(now.getTime() + 25 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      transactionDate: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      status: 'open',
+      collateralRequired: 37000,
+      collateralReleased: false,
+      notes: 'Monthly CSP on MSFT'
+    },
+
+    // acc-3: Open CSP on SPY (1 contract, $450 strike, expiring in 7 days)
+    // Premium: 1 * 100 * $3.75 = $375
+    // Collateral: 1 * 100 * $450 = $45,000
+    {
+      id: generateId(),
+      accountId: 'acc-3',
+      ticker: 'SPY',
+      strategy: 'cash-secured-put',
+      optionType: 'put',
+      action: 'sell-to-open',
+      contracts: 1,
+      strikePrice: 450.00,
+      premiumPerShare: 3.75,
+      totalPremium: 375,
+      fees: 1,
+      expirationDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      transactionDate: new Date(now.getTime() - 23 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      status: 'open',
+      collateralRequired: 45000,
+      collateralReleased: false,
+      notes: 'Weekly SPY put'
+    },
+
+    // --- CLOSED POSITIONS ---
+
+    // acc-1: Expired worthless covered call on AAPL
+    // Premium: 1 * 100 * $3.50 = $350
+    // P&L: $350 - $1 fee = $349
     {
       id: generateId(),
       accountId: 'acc-1',
@@ -186,17 +247,21 @@ export const generateMockData = () => {
       action: 'sell-to-open',
       contracts: 1,
       strikePrice: 185.00,
-      premiumPerShare: 2.25,
-      totalPremium: 225,
+      premiumPerShare: 3.50,
+      totalPremium: 350,
       fees: 1,
       expirationDate: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       transactionDate: new Date(now.getTime() - 35 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       status: 'expired',
       closeDate: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      realizedPL: 224,
-      notes: 'Expired worthless - kept premium'
+      realizedPL: 349,
+      notes: 'Expired worthless - kept full premium'
     },
-    // Closed profitable CSP on SPY
+
+    // acc-3: Closed CSP on SPY (bought to close at ~62% profit)
+    // Open premium: 3 * 100 * $4.00 = $1,200
+    // Close cost: 3 * 100 * $1.50 = $450
+    // P&L: $1200 - $450 - $2 fees = $748
     {
       id: generateId(),
       accountId: 'acc-3',
@@ -208,36 +273,22 @@ export const generateMockData = () => {
       strikePrice: 445.00,
       premiumPerShare: 4.00,
       totalPremium: 1200,
-      fees: 3,
+      fees: 2,
       expirationDate: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       transactionDate: new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       status: 'closed',
       closeDate: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       closePrice: 1.50,
-      realizedPL: 747,
+      realizedPL: 748,
       collateralRequired: 133500,
       collateralReleased: true,
-      notes: 'Closed early for 75% profit'
+      notes: 'Closed early for ~62% profit'
     },
-    // Open covered call on MSFT
-    {
-      id: generateId(),
-      accountId: 'acc-1',
-      ticker: 'MSFT',
-      strategy: 'covered-call',
-      optionType: 'call',
-      action: 'sell-to-open',
-      contracts: 1,
-      strikePrice: 400.00,
-      premiumPerShare: 5.50,
-      totalPremium: 550,
-      fees: 1.50,
-      expirationDate: new Date(now.getTime() + 25 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      transactionDate: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      status: 'open',
-      notes: 'Monthly covered call'
-    },
-    // Assigned CSP on NVDA (resulted in stock purchase)
+
+    // acc-3: Assigned CSP on NVDA (resulted in stock purchase)
+    // Premium: 1 * 100 * $4.00 = $400
+    // P&L on option: $400 - $1 fee = $399 (premium kept)
+    // Stock acquired: 100 shares at $200 = $20,000 (deducted from cash separately)
     {
       id: generateId(),
       accountId: 'acc-3',
@@ -246,24 +297,28 @@ export const generateMockData = () => {
       optionType: 'put',
       action: 'sell-to-open',
       contracts: 1,
-      strikePrice: 485.00,
-      premiumPerShare: 8.00,
-      totalPremium: 800,
-      fees: 2,
+      strikePrice: 200.00,
+      premiumPerShare: 4.00,
+      totalPremium: 400,
+      fees: 1,
       expirationDate: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      transactionDate: new Date(now.getTime() - 81 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      transactionDate: new Date(now.getTime() - 31 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       status: 'assigned',
       closeDate: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      realizedPL: 798,
-      collateralRequired: 48500,
+      realizedPL: 399,
+      collateralRequired: 20000,
       collateralReleased: true,
-      linkedStockTransactionId: stockTransactions[stockTransactions.length - 1].id,
-      notes: 'Assigned - acquired shares at strike'
+      linkedStockTransactionId: nvdaAssignmentId,
+      notes: 'Assigned - acquired 100 shares of NVDA at $200'
     },
-    // Long call on TSLA (before selling stock)
+
+    // acc-3: Closed long call on TSLA (profitable)
+    // Bought at: 2 * 100 * $12.50 = $2,500
+    // Sold at: 2 * 100 * $18.00 = $3,600
+    // P&L: $3600 - $2500 - $2 fees = $1,098
     {
       id: generateId(),
-      accountId: 'acc-1',
+      accountId: 'acc-3',
       ticker: 'TSLA',
       strategy: 'long-call',
       optionType: 'call',
@@ -280,64 +335,23 @@ export const generateMockData = () => {
       closePrice: 18.00,
       realizedPL: 1098,
       notes: 'Sold for profit before expiration'
-    },
-    // Open CSP on SPY (expiring next week)
-    {
-      id: generateId(),
-      accountId: 'acc-3',
-      ticker: 'SPY',
-      strategy: 'cash-secured-put',
-      optionType: 'put',
-      action: 'sell-to-open',
-      contracts: 2,
-      strikePrice: 455.00,
-      premiumPerShare: 3.75,
-      totalPremium: 750,
-      fees: 2,
-      expirationDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      transactionDate: new Date(now.getTime() - 23 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      status: 'open',
-      collateralRequired: 91000,
-      collateralReleased: false,
-      notes: 'Monthly SPY put'
     }
   ];
 
-  // Mock Tags
+  // =============================================
+  // TAGS
+  // =============================================
   const tags: Tag[] = [
-    {
-      id: 'tag-1',
-      name: 'High Conviction',
-      color: '#10b981',
-      type: 'both'
-    },
-    {
-      id: 'tag-2',
-      name: 'Speculative',
-      color: '#f59e0b',
-      type: 'both'
-    },
-    {
-      id: 'tag-3',
-      name: 'Income Strategy',
-      color: '#3b82f6',
-      type: 'option'
-    },
-    {
-      id: 'tag-4',
-      name: 'Hedge',
-      color: '#ef4444',
-      type: 'option'
-    },
-    {
-      id: 'tag-5',
-      name: 'Earnings Play',
-      color: '#8b5cf6',
-      type: 'both'
-    }
+    { id: 'tag-1', name: 'High Conviction', color: '#10b981', type: 'both' },
+    { id: 'tag-2', name: 'Speculative', color: '#f59e0b', type: 'both' },
+    { id: 'tag-3', name: 'Income Strategy', color: '#3b82f6', type: 'option' },
+    { id: 'tag-4', name: 'Hedge', color: '#ef4444', type: 'option' },
+    { id: 'tag-5', name: 'Earnings Play', color: '#8b5cf6', type: 'both' }
   ];
 
-  // Mock Templates
+  // =============================================
+  // TEMPLATES
+  // =============================================
   const templates: TransactionTemplate[] = [
     {
       id: 'template-1',
@@ -347,21 +361,21 @@ export const generateMockData = () => {
       ticker: 'SPY',
       strategy: 'cash-secured-put',
       optionType: 'put',
-      contracts: 2,
+      contracts: 1,
       daysToExpiration: 7,
       notes: 'Weekly income strategy'
     },
     {
       id: 'template-2',
-      name: 'Monthly CC on AAPL',
+      name: 'Monthly CSP on AAPL',
       type: 'option',
-      accountId: 'acc-1',
+      accountId: 'acc-3',
       ticker: 'AAPL',
-      strategy: 'covered-call',
-      optionType: 'call',
+      strategy: 'cash-secured-put',
+      optionType: 'put',
       contracts: 1,
       daysToExpiration: 30,
-      notes: 'Monthly covered call'
+      notes: 'Monthly income play'
     },
     {
       id: 'template-3',

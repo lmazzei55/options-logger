@@ -202,31 +202,52 @@ export const calculatePortfolioSummary = (
     ? accounts.filter(a => a.id === accountId)
     : accounts;
 
+  // Total cash in all accounts (premium already added, stock purchases already deducted)
   const totalCash = filteredAccounts.reduce((sum, acc) => sum + acc.currentCash, 0);
   
+  // Active collateral = cash reserved for open option positions
+  // This is NOT subtracted from cash in our model - it's just "reserved"
+  const activeCollateral = optionPositions
+    .filter(p => p.status === 'open')
+    .reduce((sum, p) => sum + (p.collateralRequired || 0), 0);
+  
+  // Available cash = total cash minus collateral reserved
+  const availableCash = totalCash - activeCollateral;
+  
+  // Stock value = market value if available, otherwise cost basis
   const stockValue = stockPositions.reduce((sum, pos) => {
     return sum + (pos.marketValue || pos.totalCostBasis);
   }, 0);
 
-  const optionValue = optionPositions.reduce((sum, pos) => {
-    return sum + pos.totalPremium;
-  }, 0);
+  // Option premium value: for open positions, this represents the premium received/paid
+  // that hasn't been realized yet. Since premium is already in cash, we DON'T add it again.
+  // Instead, optionPremiumValue represents the net unrealized option value (0 without live pricing)
+  const optionPremiumValue = 0; // Without live pricing, we can't value open options
 
-  const totalValue = totalCash + stockValue + optionValue;
+  // Total portfolio value = cash + stock value
+  // Cash already includes premiums received and has stock purchases deducted
+  const totalValue = totalCash + stockValue;
   
+  // Total invested = cost basis of current stock positions
   const totalInvested = stockPositions.reduce((sum, pos) => sum + pos.totalCostBasis, 0);
   
-  const totalPL = totalValue - totalInvested;
-  const totalPLPercent = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
+  // Total initial capital = sum of initial cash across all accounts
+  const totalInitialCapital = filteredAccounts.reduce((sum, acc) => sum + acc.initialCash, 0);
+  
+  // P&L = current total value - initial capital
+  const totalPL = totalValue - totalInitialCapital;
+  const totalPLPercent = totalInitialCapital > 0 ? (totalPL / totalInitialCapital) * 100 : 0;
 
   return {
     totalValue,
     totalCash,
+    availableCash,
+    activeCollateral,
     totalInvested,
     totalPL,
     totalPLPercent,
     stockValue,
-    optionValue
+    optionPremiumValue
   };
 };
 

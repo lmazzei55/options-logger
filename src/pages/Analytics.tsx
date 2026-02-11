@@ -336,14 +336,12 @@ const Analytics: React.FC = () => {
             </p>
           </div>
           <div className="bg-purple-900/20 p-4 rounded-lg">
-            <p className="text-sm text-gray-400 mb-2">Options</p>
+            <p className="text-sm text-gray-400 mb-2">Active Collateral</p>
             <p className="text-2xl font-bold text-purple-400">
-              {formatCurrency(portfolioSummary.optionValue)}
+              {formatCurrency(portfolioSummary.activeCollateral)}
             </p>
             <p className="text-sm text-gray-400 mt-1">
-              {portfolioSummary.totalValue > 0
-                ? ((portfolioSummary.optionValue / portfolioSummary.totalValue) * 100).toFixed(1)
-                : 0}%
+              Reserved for open options
             </p>
           </div>
           <div className="bg-green-900/20 p-4 rounded-lg">

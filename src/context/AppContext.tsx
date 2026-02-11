@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import type {
   InvestmentAccount,
@@ -31,7 +31,7 @@ interface AppContextType {
   optionPositions: OptionPosition[];
   
   // Selected account filter
-  selectedAccountId: string | null; // null means "All Accounts"
+  selectedAccountId: string | null;
   setSelectedAccountId: (id: string | null) => void;
   
   // Account actions
@@ -48,6 +48,13 @@ interface AppContextType {
   addOptionTransaction: (transaction: Omit<OptionTransaction, 'id'>) => void;
   updateOptionTransaction: (id: string, transaction: Partial<OptionTransaction>) => void;
   deleteOptionTransaction: (id: string) => void;
+  
+  // Option assignment/exercise workflow
+  closeOptionPosition: (
+    positionId: string,
+    closeType: 'closed' | 'expired' | 'assigned',
+    closePrice?: number
+  ) => void;
   
   // Tag actions
   addTag: (tag: Omit<Tag, 'id'>) => void;
@@ -135,40 +142,46 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
   }, [accounts, stockTransactions, optionTransactions, tags, templates, settings, selectedAccountId]);
   
-  // Account actions
+  // ==========================================
+  // ACCOUNT ACTIONS
+  // ==========================================
+  
   const addAccount = (account: Omit<InvestmentAccount, 'id'>) => {
     const newAccount: InvestmentAccount = {
       ...account,
       id: generateId()
     };
-    setAccounts([...accounts, newAccount]);
+    setAccounts(prev => [...prev, newAccount]);
   };
   
-  const updateAccount = (id: string, updates: Partial<InvestmentAccount>) => {
-    setAccounts(accounts.map(acc => acc.id === id ? { ...acc, ...updates } : acc));
-  };
+  const updateAccount = useCallback((id: string, updates: Partial<InvestmentAccount>) => {
+    setAccounts(prev => prev.map(acc => acc.id === id ? { ...acc, ...updates } : acc));
+  }, []);
   
   const deleteAccount = (id: string) => {
-    setAccounts(accounts.filter(acc => acc.id !== id));
-    // Also delete all transactions for this account
-    setStockTransactions(stockTransactions.filter(t => t.accountId !== id));
-    setOptionTransactions(optionTransactions.filter(t => t.accountId !== id));
+    setAccounts(prev => prev.filter(acc => acc.id !== id));
+    setStockTransactions(prev => prev.filter(t => t.accountId !== id));
+    setOptionTransactions(prev => prev.filter(t => t.accountId !== id));
     if (selectedAccountId === id) {
       setSelectedAccountId(null);
     }
   };
   
-  // Stock transaction actions
-  const addStockTransaction = (transaction: Omit<StockTransaction, 'id'>) => {
+  // ==========================================
+  // STOCK TRANSACTION ACTIONS
+  // ==========================================
+  
+  const addStockTransaction = useCallback((transaction: Omit<StockTransaction, 'id'>) => {
     const newTransaction: StockTransaction = {
       ...transaction,
       id: generateId()
     };
-    setStockTransactions([...stockTransactions, newTransaction]);
+    setStockTransactions(prev => [...prev, newTransaction]);
     
     // Update account cash balance
-    const account = accounts.find(a => a.id === transaction.accountId);
-    if (account) {
+    setAccounts(prev => prev.map(acc => {
+      if (acc.id !== transaction.accountId) return acc;
+      
       let cashChange = 0;
       if (transaction.action === 'buy') {
         cashChange = -(transaction.totalAmount + transaction.fees);
@@ -178,104 +191,254 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         cashChange = transaction.totalAmount;
       }
       
-      updateAccount(account.id, {
-        currentCash: account.currentCash + cashChange
-      });
-    }
-  };
+      return { ...acc, currentCash: acc.currentCash + cashChange };
+    }));
+    
+    return newTransaction.id;
+  }, []);
   
   const updateStockTransaction = (id: string, updates: Partial<StockTransaction>) => {
-    setStockTransactions(stockTransactions.map(t => t.id === id ? { ...t, ...updates } : t));
+    setStockTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   };
   
   const deleteStockTransaction = (id: string) => {
-    setStockTransactions(stockTransactions.filter(t => t.id !== id));
+    setStockTransactions(prev => prev.filter(t => t.id !== id));
   };
   
-  // Option transaction actions
-  const addOptionTransaction = (transaction: Omit<OptionTransaction, 'id'>) => {
+  // ==========================================
+  // OPTION TRANSACTION ACTIONS
+  // ==========================================
+  
+  const addOptionTransaction = useCallback((transaction: Omit<OptionTransaction, 'id'>) => {
     const newTransaction: OptionTransaction = {
       ...transaction,
       id: generateId()
     };
-    setOptionTransactions([...optionTransactions, newTransaction]);
+    setOptionTransactions(prev => [...prev, newTransaction]);
     
     // Update account cash balance
-    const account = accounts.find(a => a.id === transaction.accountId);
-    if (account) {
+    // IMPORTANT: Cash accounting for options:
+    // - sell-to-open: receive premium (cash += premium - fees)
+    //   Collateral is NOT subtracted from cash - it's just "reserved" conceptually
+    //   We track collateral separately in the portfolio summary
+    // - buy-to-open: pay premium (cash -= premium + fees)
+    // - buy-to-close: pay premium to close (cash -= premium + fees)
+    // - sell-to-close: receive premium from closing (cash += premium - fees)
+    setAccounts(prev => prev.map(acc => {
+      if (acc.id !== transaction.accountId) return acc;
+      
       let cashChange = 0;
       if (transaction.action === 'sell-to-open') {
         cashChange = transaction.totalPremium - transaction.fees;
-        // Reserve collateral if applicable
-        if (transaction.collateralRequired) {
-          cashChange -= transaction.collateralRequired;
-        }
       } else if (transaction.action === 'buy-to-open') {
         cashChange = -(transaction.totalPremium + transaction.fees);
       } else if (transaction.action === 'buy-to-close') {
         cashChange = -(transaction.totalPremium + transaction.fees);
-        // Release collateral if closing a sold position
-        if (transaction.collateralRequired && transaction.collateralReleased) {
-          cashChange += transaction.collateralRequired;
-        }
       } else if (transaction.action === 'sell-to-close') {
         cashChange = transaction.totalPremium - transaction.fees;
       }
       
-      updateAccount(account.id, {
-        currentCash: account.currentCash + cashChange
-      });
-    }
-  };
+      return { ...acc, currentCash: acc.currentCash + cashChange };
+    }));
+  }, []);
   
   const updateOptionTransaction = (id: string, updates: Partial<OptionTransaction>) => {
-    setOptionTransactions(optionTransactions.map(t => t.id === id ? { ...t, ...updates } : t));
+    setOptionTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   };
   
   const deleteOptionTransaction = (id: string) => {
-    setOptionTransactions(optionTransactions.filter(t => t.id !== id));
+    setOptionTransactions(prev => prev.filter(t => t.id !== id));
   };
   
-  // Tag actions
-  const addTag = (tag: Omit<Tag, 'id'>) => {
-    const newTag: Tag = {
-      ...tag,
-      id: generateId()
+  // ==========================================
+  // CLOSE OPTION POSITION (with proper downstream effects)
+  // ==========================================
+  
+  const closeOptionPosition = useCallback((
+    positionId: string,
+    closeType: 'closed' | 'expired' | 'assigned',
+    closePrice?: number // price per share for buy-to-close / sell-to-close
+  ) => {
+    // We need current state, so we use functional updates
+    // First, find the position and original transaction
+    const position = calculateOptionPositions(optionTransactions).find(p => p.id === positionId);
+    if (!position) return;
+    
+    const openTxn = optionTransactions.find(t =>
+      t.ticker === position.ticker &&
+      t.strikePrice === position.strikePrice &&
+      t.expirationDate === position.expirationDate &&
+      t.accountId === position.accountId &&
+      (t.action === 'sell-to-open' || t.action === 'buy-to-open')
+    );
+    if (!openTxn) return;
+    
+    const today = new Date().toISOString().split('T')[0];
+    const isSeller = openTxn.action === 'sell-to-open';
+    const closingAction = isSeller ? 'buy-to-close' : 'sell-to-close';
+    
+    // Calculate realized P&L
+    let realizedPL = 0;
+    let closePremiumPerShare = closePrice || 0;
+    let closeTotalPremium = closePremiumPerShare * position.contracts * 100;
+    
+    if (closeType === 'expired') {
+      // Option expired worthless
+      closePremiumPerShare = 0;
+      closeTotalPremium = 0;
+      if (isSeller) {
+        // Seller keeps full premium
+        realizedPL = openTxn.totalPremium - openTxn.fees;
+      } else {
+        // Buyer loses full premium
+        realizedPL = -(openTxn.totalPremium + openTxn.fees);
+      }
+    } else if (closeType === 'assigned') {
+      // Option was assigned - premium already received/paid, now stock changes hands
+      closePremiumPerShare = 0;
+      closeTotalPremium = 0;
+      if (isSeller) {
+        // Seller keeps the premium received at open
+        realizedPL = openTxn.totalPremium - openTxn.fees;
+      } else {
+        // Buyer paid premium to open, now exercises
+        realizedPL = -(openTxn.totalPremium + openTxn.fees);
+      }
+    } else {
+      // Closed manually (bought/sold to close)
+      if (isSeller) {
+        // Sold to open, bought to close
+        // P&L = premium received - premium paid to close - fees
+        realizedPL = openTxn.totalPremium - closeTotalPremium - openTxn.fees;
+      } else {
+        // Bought to open, sold to close
+        // P&L = premium received on close - premium paid to open - fees
+        realizedPL = closeTotalPremium - openTxn.totalPremium - openTxn.fees;
+      }
+    }
+    
+    // Create the closing option transaction
+    const closingOptionTxn: Omit<OptionTransaction, 'id'> = {
+      accountId: position.accountId,
+      ticker: position.ticker,
+      optionType: position.optionType,
+      strikePrice: position.strikePrice,
+      expirationDate: position.expirationDate,
+      action: closingAction as OptionTransaction['action'],
+      contracts: position.contracts,
+      premiumPerShare: closePremiumPerShare,
+      totalPremium: closeTotalPremium,
+      fees: 0,
+      transactionDate: today,
+      strategy: position.strategy,
+      status: closeType,
+      closeDate: today,
+      realizedPL: realizedPL,
+      collateralRequired: openTxn.collateralRequired,
+      collateralReleased: true,
+      notes: closeType === 'expired'
+        ? 'Option expired worthless'
+        : closeType === 'assigned'
+          ? `Option was assigned - ${position.optionType === 'put' ? 'bought' : 'sold'} ${position.contracts * 100} shares of ${position.ticker} at $${position.strikePrice}`
+          : `Position closed at $${closePremiumPerShare}/share`
     };
-    setTags([...tags, newTag]);
+    
+    // Add the closing option transaction (this handles cash for the premium)
+    addOptionTransaction(closingOptionTxn);
+    
+    // If ASSIGNED, create the corresponding stock transaction
+    if (closeType === 'assigned') {
+      const sharesCount = position.contracts * 100;
+      const stockPrice = position.strikePrice;
+      const stockTotal = sharesCount * stockPrice;
+      
+      if (position.optionType === 'put') {
+        // Put assigned = obligation to BUY stock at strike price
+        // Whether you sold the put (CSP) or bought the put and exercised
+        if (isSeller) {
+          // CSP assigned: you must buy shares at strike
+          const stockTxn: Omit<StockTransaction, 'id'> = {
+            accountId: position.accountId,
+            ticker: position.ticker,
+            action: 'buy',
+            shares: sharesCount,
+            pricePerShare: stockPrice,
+            totalAmount: stockTotal,
+            fees: 0,
+            date: today,
+            notes: `Assigned from ${position.strategy}: ${position.contracts} put contract(s) at $${position.strikePrice} strike`
+          };
+          addStockTransaction(stockTxn);
+        }
+        // If buyer exercised a put, they sell shares (less common, skip for now)
+      } else {
+        // Call assigned
+        if (isSeller) {
+          // Covered call assigned: you must sell shares at strike
+          const stockTxn: Omit<StockTransaction, 'id'> = {
+            accountId: position.accountId,
+            ticker: position.ticker,
+            action: 'sell',
+            shares: sharesCount,
+            pricePerShare: stockPrice,
+            totalAmount: stockTotal,
+            fees: 0,
+            date: today,
+            notes: `Assigned from ${position.strategy}: ${position.contracts} call contract(s) at $${position.strikePrice} strike`
+          };
+          addStockTransaction(stockTxn);
+        }
+        // If buyer exercised a call, they buy shares
+      }
+    }
+  }, [optionTransactions, addOptionTransaction, addStockTransaction]);
+  
+  // ==========================================
+  // TAG ACTIONS
+  // ==========================================
+  
+  const addTag = (tag: Omit<Tag, 'id'>) => {
+    const newTag: Tag = { ...tag, id: generateId() };
+    setTags(prev => [...prev, newTag]);
   };
   
   const updateTag = (id: string, updates: Partial<Tag>) => {
-    setTags(tags.map(t => t.id === id ? { ...t, ...updates } : t));
+    setTags(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   };
   
   const deleteTag = (id: string) => {
-    setTags(tags.filter(t => t.id !== id));
+    setTags(prev => prev.filter(t => t.id !== id));
   };
   
-  // Template actions
+  // ==========================================
+  // TEMPLATE ACTIONS
+  // ==========================================
+  
   const addTemplate = (template: Omit<TransactionTemplate, 'id'>) => {
-    const newTemplate: TransactionTemplate = {
-      ...template,
-      id: generateId()
-    };
-    setTemplates([...templates, newTemplate]);
+    const newTemplate: TransactionTemplate = { ...template, id: generateId() };
+    setTemplates(prev => [...prev, newTemplate]);
   };
   
   const updateTemplate = (id: string, updates: Partial<TransactionTemplate>) => {
-    setTemplates(templates.map(t => t.id === id ? { ...t, ...updates } : t));
+    setTemplates(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   };
   
   const deleteTemplate = (id: string) => {
-    setTemplates(templates.filter(t => t.id !== id));
+    setTemplates(prev => prev.filter(t => t.id !== id));
   };
   
-  // Settings actions
+  // ==========================================
+  // SETTINGS
+  // ==========================================
+  
   const updateSettings = (updates: Partial<AppSettings>) => {
-    setSettings({ ...settings, ...updates });
+    setSettings(prev => ({ ...prev, ...updates }));
   };
   
-  // Data management
+  // ==========================================
+  // DATA MANAGEMENT
+  // ==========================================
+  
   const loadMockData = () => {
     const mockData = generateMockData();
     setAccounts(mockData.accounts);
@@ -297,7 +460,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   };
   
   const exportData = (): string => {
-    const dataToExport = {
+    return JSON.stringify({
       accounts,
       stockTransactions,
       optionTransactions,
@@ -306,8 +469,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       settings,
       exportDate: new Date().toISOString(),
       version: '1.0.0'
-    };
-    return JSON.stringify(dataToExport, null, 2);
+    }, null, 2);
   };
   
   const importData = (jsonData: string): boolean => {
@@ -348,6 +510,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     addOptionTransaction,
     updateOptionTransaction,
     deleteOptionTransaction,
+    closeOptionPosition,
     addTag,
     updateTag,
     deleteTag,

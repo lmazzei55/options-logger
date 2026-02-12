@@ -49,13 +49,13 @@ export class AcornsParser implements BrokerParser {
         if (i + 7 >= txnLines.length) break;
         
         const date = txnLines[i];
-        const settlementDate = txnLines[i + 1];
+        // txnLines[i + 1] is settlement date (not used)
         const activity = txnLines[i + 2];
         const description = txnLines[i + 3];
         const quantity = txnLines[i + 4];
         const price = txnLines[i + 5];
-        const amount = txnLines[i + 6];
-        const portfolioType = txnLines[i + 7];
+        // txnLines[i + 6] is amount (calculated from shares * price)
+        // txnLines[i + 7] is portfolio type (not used)
         
         // Validate date format
         if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) {

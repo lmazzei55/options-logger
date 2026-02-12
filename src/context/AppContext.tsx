@@ -203,11 +203,49 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   }, []);
   
   const updateStockTransaction = (id: string, updates: Partial<StockTransaction>) => {
-    setStockTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    setStockTransactions(prev => {
+      const oldTxn = prev.find(t => t.id === id);
+      if (oldTxn) {
+        const newTxn = { ...oldTxn, ...updates };
+        // Reverse old cash impact and apply new one
+        const oldCashChange = oldTxn.action === 'buy' ? -(oldTxn.totalAmount + oldTxn.fees)
+          : oldTxn.action === 'sell' ? (oldTxn.totalAmount - oldTxn.fees)
+          : oldTxn.action === 'dividend' ? oldTxn.totalAmount : 0;
+        const newCashChange = newTxn.action === 'buy' ? -(newTxn.totalAmount + newTxn.fees)
+          : newTxn.action === 'sell' ? (newTxn.totalAmount - newTxn.fees)
+          : newTxn.action === 'dividend' ? newTxn.totalAmount : 0;
+        const cashDiff = newCashChange - oldCashChange;
+        if (cashDiff !== 0) {
+          setAccounts(prevAccounts => prevAccounts.map(acc =>
+            acc.id === oldTxn.accountId ? { ...acc, currentCash: acc.currentCash + cashDiff } : acc
+          ));
+        }
+      }
+      return prev.map(t => t.id === id ? { ...t, ...updates } : t);
+    });
   };
   
   const deleteStockTransaction = (id: string) => {
-    setStockTransactions(prev => prev.filter(t => t.id !== id));
+    setStockTransactions(prev => {
+      const txn = prev.find(t => t.id === id);
+      if (txn) {
+        // Reverse the cash impact
+        let cashChange = 0;
+        if (txn.action === 'buy') {
+          cashChange = txn.totalAmount + txn.fees; // Reverse: add back the money spent
+        } else if (txn.action === 'sell') {
+          cashChange = -(txn.totalAmount - txn.fees); // Reverse: remove the money received
+        } else if (txn.action === 'dividend') {
+          cashChange = -txn.totalAmount; // Reverse: remove the dividend
+        }
+        if (cashChange !== 0) {
+          setAccounts(prevAccounts => prevAccounts.map(acc =>
+            acc.id === txn.accountId ? { ...acc, currentCash: acc.currentCash + cashChange } : acc
+          ));
+        }
+      }
+      return prev.filter(t => t.id !== id);
+    });
   };
   
   // ==========================================
@@ -248,11 +286,45 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   }, []);
   
   const updateOptionTransaction = (id: string, updates: Partial<OptionTransaction>) => {
-    setOptionTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    setOptionTransactions(prev => {
+      const oldTxn = prev.find(t => t.id === id);
+      if (oldTxn) {
+        const newTxn = { ...oldTxn, ...updates };
+        const getCashChange = (t: OptionTransaction) => {
+          if (t.action === 'sell-to-open' || t.action === 'sell-to-close') return t.totalPremium - t.fees;
+          if (t.action === 'buy-to-open' || t.action === 'buy-to-close') return -(t.totalPremium + t.fees);
+          return 0;
+        };
+        const cashDiff = getCashChange(newTxn) - getCashChange(oldTxn);
+        if (cashDiff !== 0) {
+          setAccounts(prevAccounts => prevAccounts.map(acc =>
+            acc.id === oldTxn.accountId ? { ...acc, currentCash: acc.currentCash + cashDiff } : acc
+          ));
+        }
+      }
+      return prev.map(t => t.id === id ? { ...t, ...updates } : t);
+    });
   };
   
   const deleteOptionTransaction = (id: string) => {
-    setOptionTransactions(prev => prev.filter(t => t.id !== id));
+    setOptionTransactions(prev => {
+      const txn = prev.find(t => t.id === id);
+      if (txn) {
+        // Reverse the cash impact
+        let cashChange = 0;
+        if (txn.action === 'sell-to-open' || txn.action === 'sell-to-close') {
+          cashChange = -(txn.totalPremium - txn.fees); // Reverse: remove the premium received
+        } else if (txn.action === 'buy-to-open' || txn.action === 'buy-to-close') {
+          cashChange = txn.totalPremium + txn.fees; // Reverse: add back the premium paid
+        }
+        if (cashChange !== 0) {
+          setAccounts(prevAccounts => prevAccounts.map(acc =>
+            acc.id === txn.accountId ? { ...acc, currentCash: acc.currentCash + cashChange } : acc
+          ));
+        }
+      }
+      return prev.filter(t => t.id !== id);
+    });
   };
   
   // ==========================================

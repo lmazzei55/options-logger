@@ -48,15 +48,16 @@ const Taxes: React.FC = () => {
     }> = [];
 
     // Group transactions by ticker and account
-    const tickerAccounts = new Set<string>();
+    const tickerAccountMap = new Map<string, { ticker: string; accountId: string }>();
     filteredStockTxns.forEach(t => {
-      tickerAccounts.add(`${t.ticker}-${t.accountId}`);
+      const key = `${t.ticker}::${t.accountId}`;
+      if (!tickerAccountMap.has(key)) {
+        tickerAccountMap.set(key, { ticker: t.ticker, accountId: t.accountId });
+      }
     });
 
     // Process each ticker-account combination
-    tickerAccounts.forEach(key => {
-      const [ticker, accountId] = key.split('-');
-      
+    tickerAccountMap.forEach(({ ticker, accountId }) => {
       // Get all transactions for this ticker-account, sorted by date
       const txns = filteredStockTxns
         .filter(t => t.ticker === ticker && t.accountId === accountId)
@@ -90,8 +91,15 @@ const Taxes: React.FC = () => {
             sharesToSell -= sharesFromThisLot;
           }
           
-          // Remove fully sold lots
-          buyLots.splice(0, buyLots.findIndex(lot => lot.shares > 0) === -1 ? buyLots.length : buyLots.findIndex(lot => lot.shares > 0));
+          // Remove fully sold lots (filter in place)
+          let writeIdx = 0;
+          for (let j = 0; j < buyLots.length; j++) {
+            if (buyLots[j].shares > 0) {
+              buyLots[writeIdx] = buyLots[j];
+              writeIdx++;
+            }
+          }
+          buyLots.length = writeIdx;
         }
       });
       
@@ -131,29 +139,65 @@ const Taxes: React.FC = () => {
     let shortTermGains = 0;
     let optionPremium = 0;
 
-    // Stock sales
-    const sellTxns = filteredStockTxns.filter(t => 
-      t.action === 'sell' && 
-      new Date(t.date).getFullYear() === selectedYear
-    );
+    // Stock sales - proper FIFO matching
+    // Group all buy transactions by ticker+account, sorted by date (FIFO)
+    const buyLotTracker = new Map<string, Array<{ shares: number; pricePerShare: number; feePerShare: number; date: string }>>(); 
+    
+    // Build buy lots from all buy transactions (sorted chronologically)
+    const allSortedTxns = [...filteredStockTxns].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    allSortedTxns.forEach(txn => {
+      if (txn.action === 'buy') {
+        const key = `${txn.ticker}::${txn.accountId}`;
+        if (!buyLotTracker.has(key)) buyLotTracker.set(key, []);
+        buyLotTracker.get(key)!.push({
+          shares: txn.shares,
+          pricePerShare: txn.pricePerShare,
+          feePerShare: txn.shares > 0 ? (txn.fees || 0) / txn.shares : 0,
+          date: txn.date
+        });
+      }
+    });
 
-    sellTxns.forEach(sellTxn => {
-      // Find corresponding buy transaction (simplified FIFO)
-      const buyTxn = filteredStockTxns.find(t =>
-        t.action === 'buy' &&
-        t.ticker === sellTxn.ticker &&
-        t.accountId === sellTxn.accountId &&
-        new Date(t.date) < new Date(sellTxn.date)
-      );
+    // Process sell transactions in chronological order, matching against FIFO lots
+    allSortedTxns.forEach(txn => {
+      if (txn.action !== 'sell') return;
+      if (new Date(txn.date).getFullYear() !== selectedYear) {
+        // Still need to consume lots for sells in other years to keep FIFO accurate
+        const key = `${txn.ticker}::${txn.accountId}`;
+        const lots = buyLotTracker.get(key) || [];
+        let sharesToSell = txn.shares;
+        for (let i = 0; i < lots.length && sharesToSell > 0; i++) {
+          const consumed = Math.min(lots[i].shares, sharesToSell);
+          lots[i].shares -= consumed;
+          sharesToSell -= consumed;
+        }
+        // Clean up empty lots
+        buyLotTracker.set(key, lots.filter(l => l.shares > 0));
+        return;
+      }
 
-      if (buyTxn) {
-        const purchaseDate = new Date(buyTxn.date);
-        const saleDate = new Date(sellTxn.date);
+      const key = `${txn.ticker}::${txn.accountId}`;
+      const lots = buyLotTracker.get(key) || [];
+      let sharesToSell = txn.shares;
+      const saleDate = new Date(txn.date);
+      const salePricePerShare = txn.pricePerShare;
+      const saleFees = txn.fees || 0;
+      // Distribute fees proportionally across lots
+      const totalSaleShares = txn.shares;
+
+      for (let i = 0; i < lots.length && sharesToSell > 0; i++) {
+        const lot = lots[i];
+        const sharesFromThisLot = Math.min(lot.shares, sharesToSell);
+        const purchaseDate = new Date(lot.date);
         const daysHeld = Math.floor((saleDate.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24));
         const isLongTerm = daysHeld >= 365;
 
-        const proceeds = sellTxn.shares * sellTxn.pricePerShare - (sellTxn.fees || 0);
-        const costBasis = sellTxn.shares * buyTxn.pricePerShare + (buyTxn.fees || 0);
+        // Proportional fees
+        const proportionalSaleFees = (sharesFromThisLot / totalSaleShares) * saleFees;
+        const proportionalBuyFees = sharesFromThisLot * lot.feePerShare;
+
+        const proceeds = sharesFromThisLot * salePricePerShare - proportionalSaleFees;
+        const costBasis = sharesFromThisLot * lot.pricePerShare + proportionalBuyFees;
         const gain = proceeds - costBasis;
 
         if (isLongTerm) {
@@ -161,19 +205,51 @@ const Taxes: React.FC = () => {
         } else {
           shortTermGains += gain;
         }
+
+        lot.shares -= sharesFromThisLot;
+        sharesToSell -= sharesFromThisLot;
       }
+      // Clean up empty lots
+      buyLotTracker.set(key, lots.filter(l => l.shares > 0));
     });
 
-    // Option premium (always short-term)
+    // Option realized P&L - use closing transactions that have realizedPL
     const closedOptions = filteredOptionTxns.filter(t =>
-      t.status === 'closed' &&
+      (t.status === 'closed' || t.status === 'expired' || t.status === 'assigned') &&
       new Date(t.transactionDate).getFullYear() === selectedYear &&
-      (t.action === 'sell-to-open' || t.action === 'buy-to-open')
+      (t.action === 'buy-to-close' || t.action === 'sell-to-close')
     );
 
     closedOptions.forEach(txn => {
-      const premium = txn.contracts * 100 * txn.premiumPerShare - (txn.fees || 0);
-      optionPremium += premium;
+      optionPremium += (txn.realizedPL || 0);
+    });
+
+    // Also include expired/assigned options (they don't have a closing transaction with buy-to-close/sell-to-close)
+    // For expired options, the opening transaction has status 'expired' or 'assigned'
+    // But actually, the close flow creates a closing transaction, so let's also check
+    // for opening transactions that expired (no closing counterpart)
+    const expiredAssignedFromOpen = filteredOptionTxns.filter(t =>
+      (t.status === 'expired' || t.status === 'assigned') &&
+      new Date(t.transactionDate).getFullYear() === selectedYear &&
+      (t.action === 'sell-to-open' || t.action === 'buy-to-open')
+    );
+    
+    // Only count these if there's no corresponding closing transaction already counted
+    expiredAssignedFromOpen.forEach(openTxn => {
+      const hasClosingTxn = closedOptions.some(ct =>
+        ct.ticker === openTxn.ticker &&
+        ct.strikePrice === openTxn.strikePrice &&
+        ct.expirationDate === openTxn.expirationDate &&
+        ct.accountId === openTxn.accountId
+      );
+      if (!hasClosingTxn) {
+        // No closing transaction found, calculate P&L from the opening transaction
+        if (openTxn.action === 'sell-to-open') {
+          optionPremium += openTxn.totalPremium - (openTxn.fees || 0);
+        } else {
+          optionPremium -= openTxn.totalPremium + (openTxn.fees || 0);
+        }
+      }
     });
 
     return {
@@ -283,7 +359,10 @@ const Taxes: React.FC = () => {
 
       {/* Unrealized Gains Summary */}
       <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
-        <h2 className="text-xl font-semibold text-white mb-4">Unrealized Gains</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-white">Unrealized Gains</h2>
+          <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">Requires market data for accuracy</span>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
             <p className="text-sm text-gray-400 mb-1">Long-Term (Held &gt; 365 days)</p>

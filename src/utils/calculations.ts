@@ -273,7 +273,17 @@ export const calculateOptionsAnalytics = (
     .filter(t => t.action === 'buy-to-open')
     .reduce((sum, t) => sum + t.totalPremium, 0);
 
-  const netPremium = totalPremiumCollected - totalPremiumPaid;
+  // Include closing costs: buy-to-close costs and sell-to-close proceeds
+  const totalClosingCosts = filteredTransactions
+    .filter(t => t.action === 'buy-to-close')
+    .reduce((sum, t) => sum + t.totalPremium, 0);
+
+  const totalClosingProceeds = filteredTransactions
+    .filter(t => t.action === 'sell-to-close')
+    .reduce((sum, t) => sum + t.totalPremium, 0);
+
+  // Net premium = premiums collected from selling - premiums paid for buying - closing costs + closing proceeds
+  const netPremium = totalPremiumCollected - totalPremiumPaid - totalClosingCosts + totalClosingProceeds;
 
   const closedTransactions = filteredTransactions.filter(
     t => t.status === 'closed' || t.status === 'expired' || t.status === 'assigned'
@@ -332,9 +342,19 @@ export const calculateOptionsAnalytics = (
     .filter(p => p.status === 'open')
     .reduce((sum, p) => sum + p.totalPremium, 0);
 
-  // Calculate annualized return
-  const annualizedReturn = averageDaysToClose > 0 && totalCollateral > 0
-    ? (totalPremiumCollected / totalCollateral) * (365 / averageDaysToClose) * 100
+  // Calculate annualized return: use per-trade annualized returns averaged
+  const perTradeReturns = closedTransactions
+    .filter(t => t.collateralRequired && t.collateralRequired > 0 && t.closeDate)
+    .map(t => {
+      const days = Math.max(1, Math.round(
+        (new Date(t.closeDate!).getTime() - new Date(t.transactionDate).getTime()) / (1000 * 60 * 60 * 24)
+      ));
+      const returnPct = ((t.realizedPL || 0) / t.collateralRequired!) * (365 / days) * 100;
+      return returnPct;
+    });
+
+  const annualizedReturn = perTradeReturns.length > 0
+    ? perTradeReturns.reduce((sum, r) => sum + r, 0) / perTradeReturns.length
     : 0;
 
   return {
@@ -382,16 +402,20 @@ export const calculateStockAnalytics = (
     ? transactions.filter(t => t.accountId === accountId)
     : transactions;
 
+  // Calculate realized P&L using volume-weighted average cost basis
   const sellTransactions = filteredTransactions.filter(t => t.action === 'sell');
   const totalRealizedPL = sellTransactions.reduce((sum, sell) => {
-    // Find corresponding buy transactions
+    // Find corresponding buy transactions for same ticker and account
     const buys = filteredTransactions.filter(
-      t => t.ticker === sell.ticker && t.action === 'buy' && t.date < sell.date
+      t => t.ticker === sell.ticker && t.accountId === sell.accountId && t.action === 'buy' && t.date <= sell.date
     );
     
     if (buys.length > 0) {
-      const avgBuyPrice = buys.reduce((s, b) => s + b.pricePerShare, 0) / buys.length;
-      const pl = (sell.pricePerShare - avgBuyPrice) * sell.shares;
+      // Use volume-weighted average cost basis
+      const totalBuyShares = buys.reduce((s, b) => s + b.shares, 0);
+      const totalBuyCost = buys.reduce((s, b) => s + (b.pricePerShare * b.shares), 0);
+      const weightedAvgPrice = totalBuyShares > 0 ? totalBuyCost / totalBuyShares : 0;
+      const pl = (sell.pricePerShare - weightedAvgPrice) * sell.shares - (sell.fees || 0);
       return sum + pl;
     }
     
@@ -400,8 +424,8 @@ export const calculateStockAnalytics = (
 
   const holdingPeriods = filteredPositions.map(p => {
     const first = new Date(p.firstPurchaseDate).getTime();
-    const last = new Date(p.lastTransactionDate).getTime();
-    return (last - first) / (1000 * 60 * 60 * 24);
+    const today = new Date().getTime();
+    return (today - first) / (1000 * 60 * 60 * 24);
   });
 
   const averageHoldingPeriod = holdingPeriods.length > 0

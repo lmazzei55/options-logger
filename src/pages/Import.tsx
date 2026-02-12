@@ -11,7 +11,7 @@ const Import: React.FC = () => {
   
   const [selectedBroker, setSelectedBroker] = useState('');
   const [selectedAccount, setSelectedAccount] = useState('');
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedTransactions, setParsedTransactions] = useState<ParsedTransaction[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
@@ -21,21 +21,27 @@ const Import: React.FC = () => {
   const brokers = getAvailableBrokers();
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile && selectedFile.type === 'application/pdf') {
-      setFile(selectedFile);
-      setErrors([]);
-      setWarnings([]);
-      setParsedTransactions([]);
-      setShowPreview(false);
-    } else {
-      setErrors(['Please select a valid PDF file']);
+    const selectedFiles = Array.from(e.target.files || []);
+    const pdfFiles = selectedFiles.filter(f => f.type === 'application/pdf');
+    
+    if (pdfFiles.length === 0) {
+      setErrors(['Please select at least one valid PDF file']);
+      return;
     }
+    
+    if (pdfFiles.length !== selectedFiles.length) {
+      setWarnings([`Skipped ${selectedFiles.length - pdfFiles.length} non-PDF file(s)`]);
+    }
+    
+    setFiles(pdfFiles);
+    setErrors([]);
+    setParsedTransactions([]);
+    setShowPreview(false);
   };
   
   const handleParse = async () => {
-    if (!file || !selectedBroker) {
-      setErrors(['Please select a broker and upload a PDF file']);
+    if (files.length === 0 || !selectedBroker) {
+      setErrors(['Please select a broker and upload at least one PDF file']);
       return;
     }
     
@@ -44,9 +50,6 @@ const Import: React.FC = () => {
     setWarnings([]);
     
     try {
-      // Extract text from PDF
-      const pdfText = await extractTextFromPDF(file);
-      
       // Get the appropriate parser
       const parser = getParser(selectedBroker);
       if (!parser) {
@@ -55,16 +58,45 @@ const Import: React.FC = () => {
         return;
       }
       
-      // Parse the PDF text
-      const result = parser.parse(pdfText);
+      const allTransactions: ParsedTransaction[] = [];
+      const allErrors: string[] = [];
+      const allWarnings: string[] = [];
       
-      if (result.success) {
-        setParsedTransactions(result.transactions);
-        setWarnings(result.warnings);
+      // Process each file
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+          // Extract text from PDF
+          const pdfText = await extractTextFromPDF(file);
+          
+          // Parse the PDF text
+          const result = parser.parse(pdfText);
+          
+          if (result.success) {
+            allTransactions.push(...result.transactions);
+            if (result.warnings.length > 0) {
+              allWarnings.push(`${file.name}: ${result.warnings.join(', ')}`);
+            }
+          } else {
+            allErrors.push(`${file.name}: ${result.errors.join(', ')}`);
+            if (result.warnings.length > 0) {
+              allWarnings.push(`${file.name}: ${result.warnings.join(', ')}`);
+            }
+          }
+        } catch (error) {
+          allErrors.push(`${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+      
+      // Sort transactions by date (oldest first)
+      allTransactions.sort((a, b) => a.date.localeCompare(b.date));
+      
+      setParsedTransactions(allTransactions);
+      setErrors(allErrors);
+      setWarnings(allWarnings);
+      
+      if (allTransactions.length > 0) {
         setShowPreview(true);
-      } else {
-        setErrors(result.errors);
-        setWarnings(result.warnings);
       }
     } catch (error) {
       setErrors([error instanceof Error ? error.message : 'An unknown error occurred']);
@@ -156,6 +188,7 @@ const Import: React.FC = () => {
           <input
             type="file"
             accept=".pdf"
+            multiple
             onChange={handleFileChange}
             className="hidden"
             id="file-upload"
@@ -166,20 +199,29 @@ const Import: React.FC = () => {
           >
             Click to upload PDF statement
           </label>
-          {file && (
-            <div className="mt-4 flex items-center justify-center gap-2 text-gray-300">
-              <FileText className="w-5 h-5" />
-              <span>{file.name}</span>
+          {files.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <div className="text-gray-300 font-medium">
+                {files.length} file(s) selected
+              </div>
+              <div className="max-h-32 overflow-y-auto space-y-1">
+                {files.map((file, i) => (
+                  <div key={i} className="flex items-center gap-2 text-gray-400 text-sm">
+                    <FileText className="w-4 h-4" />
+                    <span>{file.name}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
         
         <button
           onClick={handleParse}
-          disabled={!file || !selectedBroker || isProcessing}
+          disabled={files.length === 0 || !selectedBroker || isProcessing}
           className="mt-4 w-full px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors font-medium"
         >
-          {isProcessing ? 'Processing...' : 'Parse Statement'}
+          {isProcessing ? `Processing ${files.length} file(s)...` : `Parse ${files.length > 0 ? files.length : ''} Statement${files.length !== 1 ? 's' : ''}`}
         </button>
       </div>
       
@@ -275,7 +317,7 @@ const Import: React.FC = () => {
               onClick={() => {
                 setShowPreview(false);
                 setParsedTransactions([]);
-                setFile(null);
+                setFiles([]);
               }}
               className="px-6 py-3 bg-gray-700 text-gray-300 rounded-md hover:bg-gray-600 transition-colors font-medium"
             >

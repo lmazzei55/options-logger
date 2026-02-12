@@ -9,10 +9,6 @@ export class AcornsParser implements BrokerParser {
     const errors: string[] = [];
     const warnings: string[] = [];
     
-    // Debug: log the PDF text to console
-    console.log('=== PDF Text Extraction ===');
-    console.log('First 2000 chars:', pdfText.substring(0, 2000));
-    console.log('========================');
 
     try {
       // Find the Transactions section
@@ -40,12 +36,6 @@ export class AcornsParser implements BrokerParser {
       // Extract the transaction lines
       const txnLines = lines.slice(startIndex, endIndex).filter(l => l.length > 0);
       
-      // Debug: log transaction lines
-      console.log('Transaction lines count:', txnLines.length);
-      console.log('First 50 lines:');
-      txnLines.slice(0, 50).forEach((line, i) => {
-        console.log(`[${i}]: "${line}"`);
-      });
       
       // Parse transactions - each transaction has 10 fields in sequence:
       // 0. Date (MM/DD/YYYY)

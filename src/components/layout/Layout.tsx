@@ -11,7 +11,8 @@ import {
   Menu,
   X,
   DollarSign,
-  FileText
+  FileText,
+  Upload
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -76,6 +77,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       path: '/taxes',
       name: 'Taxes',
       icon: <FileText className="h-5 w-5" />
+    },
+    {
+      path: '/import',
+      name: 'Import',
+      icon: <Upload className="h-5 w-5" />
     },
     {
       path: '/accounts',

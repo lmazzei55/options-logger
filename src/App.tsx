@@ -9,6 +9,7 @@ import Accounts from './pages/Accounts';
 import Transactions from './pages/Transactions';
 import Analytics from './pages/Analytics';
 import Taxes from './pages/Taxes';
+import Import from './pages/Import';
 import Settings from './pages/Settings';
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/taxes" element={<Taxes />} />
+            <Route path="/import" element={<Import />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>

@@ -47,27 +47,33 @@ export class AcornsParser implements BrokerParser {
         console.log(`[${i}]: "${line}"`);
       });
       
-      // Parse transactions - each transaction has 8 fields in sequence:
-      // 1. Date (MM/DD/YYYY)
-      // 2. Settlement Date (MM/DD/YYYY)
-      // 3. Activity (Bought/Sold)
-      // 4. Description (contains ticker in parentheses)
-      // 5. Quantity (number)
-      // 6. Price ($XXX.XX)
-      // 7. Amount ($XXX.XX)
-      // 8. Portfolio Type (Base/etc)
+      // Parse transactions - each transaction has 10 fields in sequence:
+      // 0. Date (MM/DD/YYYY)
+      // 1. Settlement Date (MM/DD/YYYY)
+      // 2. Activity (Bought/Sold)
+      // 3. Description (contains ticker in parentheses)
+      // 4. Quantity (number)
+      // 5. Price dollars ($XXX)
+      // 6. Price cents (.XX)
+      // 7. Amount dollars ($XXX)
+      // 8. Amount cents (.XX)
+      // 9. Portfolio Type (Base/etc)
       
-      for (let i = 0; i < txnLines.length; i += 8) {
-        if (i + 7 >= txnLines.length) break;
+      for (let i = 0; i < txnLines.length; i += 10) {
+        if (i + 9 >= txnLines.length) break;
         
         const date = txnLines[i];
         // txnLines[i + 1] is settlement date (not used)
         const activity = txnLines[i + 2];
         const description = txnLines[i + 3];
         const quantity = txnLines[i + 4];
-        const price = txnLines[i + 5];
-        // txnLines[i + 6] is amount (calculated from shares * price)
-        // txnLines[i + 7] is portfolio type (not used)
+        const priceDollars = txnLines[i + 5];
+        const priceCents = txnLines[i + 6];
+        // txnLines[i + 7] and [i + 8] are amount (calculated from shares * price)
+        // txnLines[i + 9] is portfolio type (not used)
+        
+        // Combine price dollars and cents
+        const price = priceDollars + priceCents; // e.g., "$633" + ".00" = "$633.00"
         
         // Validate date format
         if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) {

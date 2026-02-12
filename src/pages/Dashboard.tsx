@@ -330,7 +330,7 @@ const Dashboard: React.FC = () => {
       {/* Comprehensive Holdings Overview */}
       <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
         <h2 className="text-lg font-semibold text-white mb-4">All Holdings</h2>
-        {(stockPositions.length > 0 || optionPositions.filter(p => p.status === 'open').length > 0) ? (
+        {(stockPositions.length > 0 || optionPositions.filter(p => p.status === 'open').length > 0 || accounts.length > 0) ? (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -409,6 +409,33 @@ const Dashboard: React.FC = () => {
                   const displayedOptionIds = new Set<string>();
                   
                   const rows: React.JSX.Element[] = [];
+                  
+                  // Render cash balances first
+                  const accountsToShow = selectedAccountId 
+                    ? accounts.filter(a => a.id === selectedAccountId)
+                    : accounts;
+                  
+                  accountsToShow.forEach(account => {
+                    rows.push(
+                      <tr key={`cash-${account.id}`} className="border-b border-gray-800 hover:bg-gray-800 bg-gray-900">
+                        <td className="py-3 px-4 text-sm font-medium text-green-400">
+                          <span className="flex items-center gap-2">
+                            <DollarSign className="w-4 h-4" />
+                            Cash
+                          </span>
+                        </td>
+                        {!selectedAccountId && (
+                          <td className="py-3 px-4 text-sm text-blue-400">{account.name}</td>
+                        )}
+                        <td className="py-3 px-4 text-sm text-right text-gray-500">-</td>
+                        <td className="py-3 px-4 text-sm text-right text-gray-500">-</td>
+                        <td className="py-3 px-4 text-sm text-right text-gray-500">-</td>
+                        <td className="py-3 px-4 text-sm text-right text-white font-medium">{formatCurrency(account.currentCash)}</td>
+                        <td className="py-3 px-4 text-sm text-right text-gray-500">-</td>
+                        <td className="py-3 px-4 text-sm text-right text-gray-500">-</td>
+                      </tr>
+                    );
+                  });
                   
                   // Render stocks with their related options
                   sortedStocks.forEach(position => {
@@ -528,7 +555,14 @@ const Dashboard: React.FC = () => {
                     {formatCurrency(stockPositions.reduce((sum, p) => sum + p.totalCostBasis, 0))}
                   </td>
                   <td className="py-3 px-4 text-sm text-right font-bold text-white">
-                    {formatCurrency(stockPositions.reduce((sum, p) => sum + (p.marketValue || p.totalCostBasis), 0))}
+                    {(() => {
+                      const accountsToShow = selectedAccountId 
+                        ? accounts.filter(a => a.id === selectedAccountId)
+                        : accounts;
+                      const stockValue = stockPositions.reduce((sum, p) => sum + (p.marketValue || p.totalCostBasis), 0);
+                      const cashValue = accountsToShow.reduce((sum: number, a) => sum + a.currentCash, 0);
+                      return formatCurrency(stockValue + cashValue);
+                    })()}
                   </td>
                   <td className={`py-3 px-4 text-sm text-right font-bold ${
                     stockPositions.reduce((sum, p) => sum + (p.unrealizedPL || 0), 0) >= 0 ? 'text-green-400' : 'text-red-400'

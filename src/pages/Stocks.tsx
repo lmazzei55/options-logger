@@ -15,6 +15,7 @@ const Stocks: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | undefined>();
+  const [closingPosition, setClosingPosition] = useState<{ ticker: string; accountId: string; shares: number } | null>(null);
   const [sortField, setSortField] = useState<'ticker' | 'shares' | 'totalCostBasis'>('ticker');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [searchTerm, setSearchTerm] = useState('');
@@ -67,18 +68,16 @@ const Stocks: React.FC = () => {
   };
 
   const handleClosePosition = (ticker: string, accountId: string) => {
-    // Open modal with sell action pre-selected for this position
-    setEditingTransaction({
-      id: '',
-      accountId,
-      ticker,
-      action: 'sell',
-      shares: 0,
-      pricePerShare: 0,
-      date: new Date().toISOString().split('T')[0],
-      fees: 0
-    } as StockTransaction);
-    setIsModalOpen(true);
+    // Find the position to get available shares
+    const position = stockPositions.find(p => p.ticker === ticker && p.accountId === accountId);
+    if (position) {
+      setClosingPosition({
+        ticker,
+        accountId,
+        shares: position.shares
+      });
+      setIsModalOpen(true);
+    }
   };
 
   const handleDeletePosition = (ticker: string, accountId: string) => {
@@ -274,8 +273,15 @@ const Stocks: React.FC = () => {
         onClose={() => {
           setIsModalOpen(false);
           setEditingTransaction(undefined);
+          setClosingPosition(null);
         }}
         transaction={editingTransaction}
+        initialValues={closingPosition ? {
+          accountId: closingPosition.accountId,
+          ticker: closingPosition.ticker,
+          action: 'sell',
+          shares: closingPosition.shares
+        } : undefined}
       />
     </div>
   );

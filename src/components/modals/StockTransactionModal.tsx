@@ -7,12 +7,19 @@ interface StockTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
   transaction?: StockTransaction; // If provided, we're editing
+  initialValues?: Partial<{
+    accountId: string;
+    action: StockTransaction['action'];
+    ticker: string;
+    shares: number;
+  }>; // Pre-fill form without triggering edit mode
 }
 
 const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
   isOpen,
   onClose,
-  transaction
+  transaction,
+  initialValues
 }) => {
   const {
     accounts,
@@ -51,13 +58,13 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
         tagIds: transaction.tagIds || []
       });
     } else {
-      // Reset form for new transaction
+      // Reset form for new transaction, with optional initial values
       setFormData({
-        accountId: selectedAccountId || '',
+        accountId: initialValues?.accountId || selectedAccountId || '',
         date: new Date().toISOString().split('T')[0],
-        action: 'buy',
-        ticker: '',
-        shares: 0,
+        action: initialValues?.action || 'buy',
+        ticker: initialValues?.ticker || '',
+        shares: initialValues?.shares || 0,
         pricePerShare: 0,
         fees: 0,
         notes: '',
@@ -65,7 +72,7 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
       });
     }
     setErrors({});
-  }, [transaction, selectedAccountId, isOpen]);
+  }, [transaction, initialValues, selectedAccountId, isOpen]);
 
   const totalAmount = useMemo(() => {
     return formData.shares * formData.pricePerShare;

@@ -41,7 +41,11 @@ export class AcornsParser implements BrokerParser {
       const txnLines = lines.slice(startIndex, endIndex).filter(l => l.length > 0);
       
       // Debug: log transaction lines
-      console.log('Transaction lines:', txnLines.slice(0, 40));
+      console.log('Transaction lines count:', txnLines.length);
+      console.log('First 50 lines:');
+      txnLines.slice(0, 50).forEach((line, i) => {
+        console.log(`[${i}]: "${line}"`);
+      });
       
       // Parse transactions - each transaction has 8 fields in sequence:
       // 1. Date (MM/DD/YYYY)

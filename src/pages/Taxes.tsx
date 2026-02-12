@@ -4,7 +4,7 @@ import { formatCurrency } from '../utils/calculations';
 import { TrendingUp, TrendingDown, Calendar, DollarSign } from 'lucide-react';
 
 const Taxes: React.FC = () => {
-  const { accounts, selectedAccountId, stockTransactions, optionTransactions, stockPositions, settings } = useAppContext();
+  const { accounts, selectedAccountId, stockTransactions, optionTransactions, settings } = useAppContext();
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [taxLotsSortField, setTaxLotsSortField] = useState<'ticker' | 'shares' | 'daysHeld' | 'costBasis' | 'unrealizedGain'>('ticker');
   const [taxLotsSortDirection, setTaxLotsSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -47,41 +47,83 @@ const Taxes: React.FC = () => {
       accountId: string;
     }> = [];
 
-    // Group buy transactions by ticker and account
-    const buyTxns = filteredStockTxns.filter(t => t.action === 'buy');
-    
-    buyTxns.forEach(txn => {
-      const position = stockPositions.find(
-        p => p.ticker === txn.ticker && p.accountId === txn.accountId
-      );
-      
-      if (position && position.shares > 0) {
-        const purchaseDate = new Date(txn.date);
-        const today = new Date();
-        const daysHeld = Math.floor((today.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24));
-        const isLongTerm = daysHeld >= 365;
-        
-        // Simplified: assume current market value equals cost basis for demo
-        // In reality, you'd fetch current market prices
-        const currentValue = txn.shares * txn.pricePerShare;
-        const costBasis = txn.shares * txn.pricePerShare + (txn.fees || 0);
-        const unrealizedGain = currentValue - costBasis;
+    // Group transactions by ticker and account
+    const tickerAccounts = new Set<string>();
+    filteredStockTxns.forEach(t => {
+      tickerAccounts.add(`${t.ticker}-${t.accountId}`);
+    });
 
-        lots.push({
-          ticker: txn.ticker,
-          shares: txn.shares,
-          costBasis,
-          purchaseDate: txn.date,
-          daysHeld,
-          isLongTerm,
-          unrealizedGain,
-          accountId: txn.accountId
-        });
-      }
+    // Process each ticker-account combination
+    tickerAccounts.forEach(key => {
+      const [ticker, accountId] = key.split('-');
+      
+      // Get all transactions for this ticker-account, sorted by date
+      const txns = filteredStockTxns
+        .filter(t => t.ticker === ticker && t.accountId === accountId)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      // Track remaining shares from each buy (FIFO)
+      const buyLots: Array<{
+        shares: number;
+        pricePerShare: number;
+        fees: number;
+        date: string;
+      }> = [];
+      
+      txns.forEach(txn => {
+        if (txn.action === 'buy') {
+          // Add new lot
+          buyLots.push({
+            shares: txn.shares,
+            pricePerShare: txn.pricePerShare,
+            fees: txn.fees || 0,
+            date: txn.date
+          });
+        } else if (txn.action === 'sell') {
+          // Reduce lots using FIFO
+          let sharesToSell = txn.shares;
+          
+          for (let i = 0; i < buyLots.length && sharesToSell > 0; i++) {
+            const lot = buyLots[i];
+            const sharesFromThisLot = Math.min(lot.shares, sharesToSell);
+            lot.shares -= sharesFromThisLot;
+            sharesToSell -= sharesFromThisLot;
+          }
+          
+          // Remove fully sold lots
+          buyLots.splice(0, buyLots.findIndex(lot => lot.shares > 0) === -1 ? buyLots.length : buyLots.findIndex(lot => lot.shares > 0));
+        }
+      });
+      
+      // Convert remaining buy lots to tax lots
+      const today = new Date();
+      buyLots.forEach(lot => {
+        if (lot.shares > 0) {
+          const purchaseDate = new Date(lot.date);
+          const daysHeld = Math.floor((today.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24));
+          const isLongTerm = daysHeld >= 365;
+          
+          // Simplified: assume current market value equals cost basis for demo
+          const currentValue = lot.shares * lot.pricePerShare;
+          const costBasis = lot.shares * lot.pricePerShare + lot.fees;
+          const unrealizedGain = currentValue - costBasis;
+
+          lots.push({
+            ticker,
+            shares: lot.shares,
+            costBasis,
+            purchaseDate: lot.date,
+            daysHeld,
+            isLongTerm,
+            unrealizedGain,
+            accountId
+          });
+        }
+      });
     });
 
     return lots;
-  }, [filteredStockTxns, stockPositions]);
+  }, [filteredStockTxns]);
 
   // Calculate realized gains for the selected year
   const realizedGains = useMemo(() => {

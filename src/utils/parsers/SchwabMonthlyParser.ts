@@ -64,10 +64,18 @@ export class SchwabMonthlyParser implements BrokerParser {
         
         const ticker = tickerMatch[1];
         console.log(`Found ticker: ${ticker}`);
+        
+        // Check if ticker line contains expiration date (SOFI format)
+        const tickerExpMatch = tickerLine.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        const tickerExpiration = tickerExpMatch ? `${tickerExpMatch[3]}-${tickerExpMatch[1]}-${tickerExpMatch[2]}` : null;
+        if (tickerExpiration) {
+          console.log(`  Expiration found in ticker line: ${tickerExpiration}`);
+        }
+        
         i++;
         
         // Try to parse as option transaction
-        const option = this.parseOptionTransaction(lines, i, ticker, date, category, action, year);
+        const option = this.parseOptionTransaction(lines, i, ticker, date, category, action, year, tickerExpiration);
         if (option) {
           console.log(`✓ Parsed option: ${date} ${ticker} ${option.transaction.optionType} $${option.transaction.strikePrice}`);
           optionTransactions.push(option.transaction);
@@ -101,7 +109,8 @@ export class SchwabMonthlyParser implements BrokerParser {
     date: string,
     category: string,
     action: string,
-    year: string
+    year: string,
+    tickerExpiration: string | null = null
   ): { transaction: ParsedOptionTransaction; nextIndex: number } | null {
     // Expected structure after ticker:
     // - Expiration line (e.g., "03/20/2026 40.00" or "01/30/2026")
@@ -119,35 +128,61 @@ export class SchwabMonthlyParser implements BrokerParser {
     
     console.log(`  Parsing ${ticker} starting at line ${i}:`, lines[i]);
     
-    // Parse expiration date line (may contain strike price too)
-    if (i >= lines.length) {
-      console.log(`  ✗ Out of bounds at line ${i}`);
-      return null;
-    }
-    const expDateLine = lines[i];
-    console.log(`  Exp date line: "${expDateLine}"`);
-    const expDateMatch = expDateLine.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-    if (!expDateMatch) {
-      console.log(`  ✗ No expiration date found`);
-      return null;
-    }
-    const expirationDate = `${expDateMatch[3]}-${expDateMatch[1]}-${expDateMatch[2]}`;
-    console.log(`  Expiration: ${expirationDate}`);
-    i++;
+    let expirationDate: string;
     
-    // Parse C or P
+    // If expiration was in ticker line (SOFI format), use it
+    if (tickerExpiration) {
+      expirationDate = tickerExpiration;
+      console.log(`  Using expiration from ticker: ${expirationDate}`);
+    } else {
+      // Parse expiration date line (AEHR format: "03/20/2026 40.00")
+      if (i >= lines.length) {
+        console.log(`  ✗ Out of bounds at line ${i}`);
+        return null;
+      }
+      const expDateLine = lines[i];
+      console.log(`  Exp date line: "${expDateLine}"`);
+      const expDateMatch = expDateLine.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if (!expDateMatch) {
+        console.log(`  ✗ No expiration date found`);
+        return null;
+      }
+      expirationDate = `${expDateMatch[3]}-${expDateMatch[1]}-${expDateMatch[2]}`;
+      console.log(`  Expiration: ${expirationDate}`);
+      i++;
+    }
+    
+    // Parse C or P (may be standalone or combined with strike like "26.00 P")
     if (i >= lines.length) {
       console.log(`  ✗ Out of bounds looking for C/P at line ${i}`);
       return null;
     }
     const cpLine = lines[i];
     console.log(`  C/P line: "${cpLine}"`);
-    if (cpLine !== 'C' && cpLine !== 'P') {
+    
+    let optionType: 'call' | 'put';
+    let strikeFromCPLine: number | null = null;
+    
+    if (cpLine === 'C' || cpLine === 'P') {
+      // AEHR format: standalone C or P
+      optionType = cpLine === 'C' ? 'call' : 'put';
+      i++;
+    } else if (/^[\d.]+\s+[CP]$/.test(cpLine)) {
+      // SOFI format: "26.00 P" or "26.00 C"
+      const match = cpLine.match(/^([\d.]+)\s+([CP])$/);
+      if (match) {
+        strikeFromCPLine = parseFloat(match[1]);
+        optionType = match[2] === 'C' ? 'call' : 'put';
+        console.log(`  Strike+C/P combined: $${strikeFromCPLine} ${optionType}`);
+        i++;
+      } else {
+        console.log(`  ✗ Could not parse combined strike+C/P`);
+        return null;
+      }
+    } else {
       console.log(`  ✗ Not C or P`);
       return null;
     }
-    const optionType = cpLine === 'C' ? 'call' : 'put';
-    i++;
     
     // Parse description (contains CALL/PUT and may contain strike)
     if (i >= lines.length) return null;
@@ -155,13 +190,20 @@ export class SchwabMonthlyParser implements BrokerParser {
     if (!/\b(CALL|PUT)\b/.test(descLine)) return null;
     i++;
     
-    // Parse strike price
-    if (i >= lines.length) return null;
-    const strikeLine = lines[i];
-    const strikeMatch = strikeLine.match(/\$(\d+(?:\.\d+)?)/);
-    if (!strikeMatch) return null;
-    const strikePrice = parseFloat(strikeMatch[1]);
-    i++;
+    // Parse strike price (may already have it from combined C/P line)
+    let strikePrice: number;
+    if (strikeFromCPLine !== null) {
+      strikePrice = strikeFromCPLine;
+      console.log(`  Using strike from C/P line: $${strikePrice}`);
+    } else {
+      if (i >= lines.length) return null;
+      const strikeLine = lines[i];
+      const strikeMatch = strikeLine.match(/\$(\d+(?:\.\d+)?)/);
+      if (!strikeMatch) return null;
+      strikePrice = parseFloat(strikeMatch[1]);
+      console.log(`  Strike from separate line: $${strikePrice}`);
+      i++;
+    }
     
     // Parse EXP line (skip it, we already have expiration)
     if (i >= lines.length) return null;

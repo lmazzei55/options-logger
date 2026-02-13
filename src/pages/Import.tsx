@@ -395,7 +395,14 @@ const Import: React.FC = () => {
                         <td className="py-3 px-4 text-right text-gray-300">${txn.premiumPerShare.toFixed(2)}</td>
                         <td className="py-3 px-4 text-right text-gray-300">${(txn.fees || 0).toFixed(2)}</td>
                         <td className="py-3 px-4 text-right text-white font-medium">
-                          ${(txn.contracts * txn.premiumPerShare * 100).toFixed(2)}
+                          ${(() => {
+                            const premiumTotal = txn.contracts * txn.premiumPerShare * 100;
+                            const fees = txn.fees || 0;
+                            // For sell transactions, subtract fees from received amount
+                            // For buy transactions, add fees to cost
+                            const total = txn.action.includes('sell') ? premiumTotal - fees : premiumTotal + fees;
+                            return total.toFixed(2);
+                          })()}
                         </td>
                         <td className="py-3 px-4 text-gray-300">{txn.expirationDate}</td>
                       </tr>

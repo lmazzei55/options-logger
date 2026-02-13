@@ -117,18 +117,35 @@ export class SchwabMonthlyParser implements BrokerParser {
     
     let i = startIndex;
     
+    console.log(`  Parsing ${ticker} starting at line ${i}:`, lines[i]);
+    
     // Parse expiration date line (may contain strike price too)
-    if (i >= lines.length) return null;
+    if (i >= lines.length) {
+      console.log(`  ✗ Out of bounds at line ${i}`);
+      return null;
+    }
     const expDateLine = lines[i];
+    console.log(`  Exp date line: "${expDateLine}"`);
     const expDateMatch = expDateLine.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-    if (!expDateMatch) return null;
+    if (!expDateMatch) {
+      console.log(`  ✗ No expiration date found`);
+      return null;
+    }
     const expirationDate = `${expDateMatch[3]}-${expDateMatch[1]}-${expDateMatch[2]}`;
+    console.log(`  Expiration: ${expirationDate}`);
     i++;
     
     // Parse C or P
-    if (i >= lines.length) return null;
+    if (i >= lines.length) {
+      console.log(`  ✗ Out of bounds looking for C/P at line ${i}`);
+      return null;
+    }
     const cpLine = lines[i];
-    if (cpLine !== 'C' && cpLine !== 'P') return null;
+    console.log(`  C/P line: "${cpLine}"`);
+    if (cpLine !== 'C' && cpLine !== 'P') {
+      console.log(`  ✗ Not C or P`);
+      return null;
+    }
     const optionType = cpLine === 'C' ? 'call' : 'put';
     i++;
     

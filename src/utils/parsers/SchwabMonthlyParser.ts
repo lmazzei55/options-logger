@@ -255,9 +255,12 @@ export class SchwabMonthlyParser implements BrokerParser {
     // Determine action type
     let optionAction: 'sell-to-open' | 'buy-to-open' | 'buy-to-close' | 'sell-to-close';
     
+    console.log(`  Action determination: category="${category}", action="${action}"`);
+    
     // Check for realized gain/loss in next few lines
     const nextLines = lines.slice(i, Math.min(i + 5, lines.length)).join(' ');
     const hasRealizedGL = /Realized|Gain\/\(Loss\)/.test(nextLines);
+    console.log(`  Has realized G/L: ${hasRealizedGL}`);
     
     if (category === 'Sale' && action === 'Short Sale') {
       optionAction = 'sell-to-open';
@@ -272,6 +275,8 @@ export class SchwabMonthlyParser implements BrokerParser {
     } else {
       optionAction = 'buy-to-open';
     }
+    
+    console.log(`  Determined action: ${optionAction}`)
     
     // Parse full date
     const fullDate = this.parseDate(`${date}/${year}`);

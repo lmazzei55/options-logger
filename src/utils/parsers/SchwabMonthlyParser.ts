@@ -11,165 +11,63 @@ export class SchwabMonthlyParser implements BrokerParser {
     const warnings: string[] = [];
 
     try {
-      // DEBUG: Log first 500 chars and search for Transaction Details
-      console.log('=== SCHWAB PARSER DEBUG ===');
-      console.log('PDF Text length:', pdfText.length);
-      console.log('First 500 chars:', pdfText.substring(0, 500));
-      console.log('Contains "Transaction Details":', pdfText.includes('Transaction Details'));
-      console.log('Contains "Total Transactions":', pdfText.includes('Total Transactions'));
-      
       // Extract year from statement period
       const yearMatch = pdfText.match(/(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d+-\d+,\s+(\d{4})/);
       const year = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
-      console.log('Year found:', year);
 
       // Find Transaction Details section
       const txnSectionMatch = pdfText.match(/Transaction Details[\s\S]*?Total Transactions/);
       
       if (!txnSectionMatch) {
-        console.log('ERROR: Transaction Details section not found');
         errors.push('Could not find Transaction Details section in PDF');
         return { success: false, transactions: [], optionTransactions: [], errors, warnings };
       }
-      
-      console.log('Transaction section found, length:', txnSectionMatch[0].length);
 
       const txnSection = txnSectionMatch[0];
       const lines = txnSection.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      
-      console.log('Total lines after split:', lines.length);
-      console.log('First 30 lines:');
-      lines.slice(0, 30).forEach((line, idx) => {
-        console.log(`  ${idx}: "${line}"`);
-      });
 
-      // Parse transactions by date blocks
-      let currentDate = '';
-      let currentCategory = '';
-      let currentAction = '';
-      let pendingDate = '';
-      let pendingCategory = '';
-      let pendingAction = '';
-      
-      for (let i = 0; i < lines.length; i++) {
+      // Parse transactions
+      let i = 0;
+      while (i < lines.length) {
         const line = lines[i];
         
-        // Check for date line
+        // Look for date line: "01/13 Sale" or "01/16 Purchase"
         const dateMatch = line.match(/^(\d{1,2}\/\d{1,2})\s+(Sale|Purchase)/);
-        if (dateMatch) {
-          // If we have a pending date and encounter a new date:
-          // - The pending date had no immediate data
-          // - Set current to the NEW date (not pending)
-          // - Keep pending for potential use if first ticker belongs to it
-          if (pendingDate) {
-            // Don't clear pending yet - we'll use it when we find the first ticker
-            currentDate = dateMatch[1];
-            currentCategory = dateMatch[2];
-            currentAction = '';
-            
-            // Check next line for action
-            if (i + 1 < lines.length && (lines[i + 1] === 'Short Sale' || lines[i + 1] === 'Cover Short')) {
-              currentAction = lines[i + 1];
-              i++; // Skip action line
-            }
-          } else {
-            currentDate = dateMatch[1];
-            currentCategory = dateMatch[2];
-            currentAction = '';
-            
-            // Check next line for action
-            if (i + 1 < lines.length && (lines[i + 1] === 'Short Sale' || lines[i + 1] === 'Cover Short')) {
-              currentAction = lines[i + 1];
-              i++; // Skip action line
-            }
-            
-            // Mark this as pending in case next line is another date
-            pendingDate = currentDate;
-            pendingCategory = currentCategory;
-            pendingAction = currentAction;
-          }
+        if (!dateMatch) {
+          i++;
           continue;
         }
         
-        // Look for option transaction start
-        // Pattern 1: Standalone ticker (AEHR) - next line has CALL/PUT
-        // Pattern 2: Ticker with full info on one line (SOFI 01/30/2026 PUT...)
-        const isStandaloneTicker = /^[A-Z]{2,5}$/.test(line) && line !== 'CUSIP' && line !== 'Symbol' && line !== 'Description' && line !== 'Action';
-        const tickerWithInfo = line.match(/^([A-Z]{2,5})\s+\d{2}\/\d{2}\/\d{4}\s+(CALL|PUT)/);
+        const date = dateMatch[1];
+        const category = dateMatch[2];
+        i++;
         
-        // If we find a ticker:
-        // - If pending date exists and differs from current, first ticker uses pending
-        // - Clear pending after first use
-        if ((isStandaloneTicker || tickerWithInfo) && pendingDate && pendingDate !== currentDate) {
-          // Use pending date for this ticker
-          const usePendingDate = pendingDate;
-          const usePendingCategory = pendingCategory;
-          const usePendingAction = pendingAction;
-          
-          // Clear pending
-          pendingDate = '';
-          pendingCategory = '';
-          pendingAction = '';
-          
-          // Process with pending date
-          if (isStandaloneTicker) {
-            if (i + 1 >= lines.length) continue;
-            const descLine = lines[i + 1];
-            if (!/\b(CALL|PUT)\b/.test(descLine)) continue;
-            
-            try {
-              const option = this.extractOptionFromBlock(lines, i, usePendingDate, usePendingCategory, usePendingAction, year, 'standard');
-              if (option) {
-                optionTransactions.push(option);
-              }
-            } catch (error) {
-              warnings.push(`Failed to parse option at line ${i}: ${error instanceof Error ? error.message : String(error)}`);
-            }
-          } else if (tickerWithInfo) {
-            try {
-              const option = this.extractOptionFromBlock(lines, i, usePendingDate, usePendingCategory, usePendingAction, year, 'compact');
-              if (option) {
-                optionTransactions.push(option);
-              }
-            } catch (error) {
-              warnings.push(`Failed to parse option at line ${i}: ${error instanceof Error ? error.message : String(error)}`);
-            }
-          }
+        // Check if next line is an action (Short Sale, Cover Short, etc.)
+        let action = '';
+        if (i < lines.length && (lines[i] === 'Short Sale' || lines[i] === 'Cover Short')) {
+          action = lines[i];
+          i++;
+        }
+        
+        // Look for ticker on next line (should be 2-5 letter symbol)
+        if (i >= lines.length) break;
+        
+        const tickerLine = lines[i];
+        // Check if this is a ticker (standalone or with date like "SOFI 01/30/2026")
+        const tickerMatch = tickerLine.match(/^([A-Z]{2,5})(?:\s|$)/);
+        if (!tickerMatch) {
+          // Not a valid ticker, skip this transaction
           continue;
         }
         
-        // Clear pending if we've found a ticker
-        if (isStandaloneTicker || tickerWithInfo) {
-          pendingDate = '';
-          pendingCategory = '';
-          pendingAction = '';
-        }
+        const ticker = tickerMatch[1];
+        i++;
         
-        if (isStandaloneTicker) {
-          // Verify next line has CALL or PUT
-          if (i + 1 >= lines.length) continue;
-          const descLine = lines[i + 1];
-          if (!/\b(CALL|PUT)\b/.test(descLine)) continue;
-          
-          // Extract option data using standard format
-          try {
-            const option = this.extractOptionFromBlock(lines, i, currentDate, currentCategory, currentAction, year, 'standard');
-            if (option) {
-              optionTransactions.push(option);
-            }
-          } catch (error) {
-            warnings.push(`Failed to parse option at line ${i}: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        } else if (tickerWithInfo) {
-          // Extract option data using compact format
-          try {
-            const option = this.extractOptionFromBlock(lines, i, currentDate, currentCategory, currentAction, year, 'compact');
-            if (option) {
-              optionTransactions.push(option);
-            }
-          } catch (error) {
-            warnings.push(`Failed to parse option at line ${i}: ${error instanceof Error ? error.message : String(error)}`);
-          }
+        // Try to parse as option transaction
+        const option = this.parseOptionTransaction(lines, i, ticker, date, category, action, year);
+        if (option) {
+          optionTransactions.push(option.transaction);
+          i = option.nextIndex;
         }
       }
 
@@ -190,131 +88,103 @@ export class SchwabMonthlyParser implements BrokerParser {
     }
   }
 
-  private extractOptionFromBlock(
+  private parseOptionTransaction(
     lines: string[],
     startIndex: number,
-    date: string,
-    category: string,
-    action: string,
-    year: string,
-    format: 'standard' | 'compact'
-  ): ParsedOptionTransaction | null {
-    if (format === 'standard') {
-      // Standard format (AEHR):
-      // 0: Ticker (e.g., "AEHR")
-      // 1: Description (e.g., "CALL AEHR TEST SYS")
-      // 2: Strike (e.g., "$40")
-      // 3: Expiration (e.g., "03/20/2026 40.00 EXP 03/20/26")
-      // 4: C or P
-      // 5: Commission line
-      // 6: Quantity (e.g., "(10.0000)")
-      // 7: Price per share (e.g., "0.8800")
-      // 8: Charges (e.g., "6.64")
-      // 9: Amount (e.g., "873.36")
-      
-      if (startIndex + 9 >= lines.length) return null;
-      
-      const ticker = lines[startIndex];
-      
-      const descLine = lines[startIndex + 1];
-      const typeMatch = descLine.match(/\b(CALL|PUT)\b/);
-      if (!typeMatch) return null;
-      const optionType = typeMatch[1].toLowerCase() as 'call' | 'put';
-      
-      const strikeLine = lines[startIndex + 2];
-      const strikeMatch = strikeLine.match(/\$(\d+(?:\.\d+)?)/);
-      if (!strikeMatch) return null;
-      const strikePrice = parseFloat(strikeMatch[1]);
-      
-      const expLine = lines[startIndex + 3];
-      const expMatch = expLine.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-      if (!expMatch) return null;
-      const expirationDate = `${expMatch[3]}-${expMatch[1]}-${expMatch[2]}`;
-      
-      const quantityLine = lines[startIndex + 6];
-      const quantityMatch = quantityLine.match(/\(?(\d+\.\d+)\)?/);
-      if (!quantityMatch) return null;
-      const contracts = parseFloat(quantityMatch[1]);
-      
-      const priceLine = lines[startIndex + 7];
-      const priceMatch = priceLine.match(/^([\d.]+)$/);
-      if (!priceMatch) return null;
-      const premiumPerShare = parseFloat(priceMatch[1]);
-      
-      const feesLine = lines[startIndex + 8];
-      const feesMatch = feesLine.match(/^([\d.]+)$/);
-      const fees = feesMatch ? parseFloat(feesMatch[1]) : 0;
-      
-      return this.buildOptionTransaction(ticker, optionType, strikePrice, expirationDate, contracts, premiumPerShare, fees, date, category, action, year, lines, startIndex);
-      
-    } else {
-      // Compact format (SOFI):
-      // 0: "SOFI 01/30/2026 PUT SOFI TECHNOLOGIES IN$25.5"
-      // 1: "25.50 P"
-      // 2: "EXP 01/30/26"
-      // 3: Quantity (e.g., "(14.0000)")
-      // 4: Price per share (e.g., "1.0200")
-      // 5: Charges (e.g., "9.30")
-      
-      if (startIndex + 5 >= lines.length) return null;
-      
-      const firstLine = lines[startIndex];
-      const tickerMatch = firstLine.match(/^([A-Z]{2,5})/);
-      if (!tickerMatch) return null;
-      const ticker = tickerMatch[1];
-      
-      const typeMatch = firstLine.match(/\b(CALL|PUT)\b/);
-      if (!typeMatch) return null;
-      const optionType = typeMatch[1].toLowerCase() as 'call' | 'put';
-      
-      const strikeMatch = firstLine.match(/\$(\d+(?:\.\d+)?)/);
-      if (!strikeMatch) return null;
-      const strikePrice = parseFloat(strikeMatch[1]);
-      
-      const expLine = lines[startIndex + 2];
-      const expMatch = expLine.match(/EXP\s+(\d{2})\/(\d{2})\/(\d{2})/);
-      if (!expMatch) return null;
-      const expirationDate = `20${expMatch[3]}-${expMatch[1]}-${expMatch[2]}`;
-      
-      const quantityLine = lines[startIndex + 3];
-      const quantityMatch = quantityLine.match(/\(?(\d+\.\d+)\)?/);
-      if (!quantityMatch) return null;
-      const contracts = parseFloat(quantityMatch[1]);
-      
-      const priceLine = lines[startIndex + 4];
-      const priceMatch = priceLine.match(/^([\d.]+)$/);
-      if (!priceMatch) return null;
-      const premiumPerShare = parseFloat(priceMatch[1]);
-      
-      const feesLine = lines[startIndex + 5];
-      const feesMatch = feesLine.match(/^([\d.]+)$/);
-      const fees = feesMatch ? parseFloat(feesMatch[1]) : 0;
-      
-      return this.buildOptionTransaction(ticker, optionType, strikePrice, expirationDate, contracts, premiumPerShare, fees, date, category, action, year, lines, startIndex);
-    }
-  }
-
-  private buildOptionTransaction(
     ticker: string,
-    optionType: 'call' | 'put',
-    strikePrice: number,
-    expirationDate: string,
-    contracts: number,
-    premiumPerShare: number,
-    fees: number,
     date: string,
     category: string,
     action: string,
-    year: string,
-    lines: string[],
-    startIndex: number
-  ): ParsedOptionTransaction {
-    // Determine action
-    // Check if there's a realized gain/loss in the next few lines
-    const nextLines = lines.slice(startIndex, Math.min(startIndex + 15, lines.length)).join(' ');
-    const hasRealizedGL = /\(ST\)|\(LT\)|,\(ST\)|,\(LT\)/.test(nextLines);
+    year: string
+  ): { transaction: ParsedOptionTransaction; nextIndex: number } | null {
+    // Expected structure after ticker:
+    // - Expiration line (e.g., "03/20/2026 40.00" or "01/30/2026")
+    // - C or P
+    // - Description (e.g., "CALL AEHR TEST SYS" or "PUT SOFI TECHNOLOGIES IN$26")
+    // - Strike (e.g., "$40")
+    // - EXP line (e.g., "EXP 03/20/26")
+    // - Quantity (e.g., "(10.0000)")
+    // - Price (e.g., "0.8800")
+    // - Charges (e.g., "6.64")
+    // - Amount (e.g., "873.36")
+    // - Commission line (optional)
     
+    let i = startIndex;
+    
+    // Parse expiration date line (may contain strike price too)
+    if (i >= lines.length) return null;
+    const expDateLine = lines[i];
+    const expDateMatch = expDateLine.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (!expDateMatch) return null;
+    const expirationDate = `${expDateMatch[3]}-${expDateMatch[1]}-${expDateMatch[2]}`;
+    i++;
+    
+    // Parse C or P
+    if (i >= lines.length) return null;
+    const cpLine = lines[i];
+    if (cpLine !== 'C' && cpLine !== 'P') return null;
+    const optionType = cpLine === 'C' ? 'call' : 'put';
+    i++;
+    
+    // Parse description (contains CALL/PUT and may contain strike)
+    if (i >= lines.length) return null;
+    const descLine = lines[i];
+    if (!/\b(CALL|PUT)\b/.test(descLine)) return null;
+    i++;
+    
+    // Parse strike price
+    if (i >= lines.length) return null;
+    const strikeLine = lines[i];
+    const strikeMatch = strikeLine.match(/\$(\d+(?:\.\d+)?)/);
+    if (!strikeMatch) return null;
+    const strikePrice = parseFloat(strikeMatch[1]);
+    i++;
+    
+    // Parse EXP line (skip it, we already have expiration)
+    if (i >= lines.length) return null;
+    if (lines[i].startsWith('EXP')) {
+      i++;
+    }
+    
+    // Parse quantity
+    if (i >= lines.length) return null;
+    const quantityLine = lines[i];
+    const quantityMatch = quantityLine.match(/\(?([\d.]+)\)?/);
+    if (!quantityMatch) return null;
+    const contracts = Math.abs(parseFloat(quantityMatch[1]));
+    i++;
+    
+    // Parse price per share
+    if (i >= lines.length) return null;
+    const priceLine = lines[i];
+    const priceMatch = priceLine.match(/^([\d.]+)$/);
+    if (!priceMatch) return null;
+    const premiumPerShare = parseFloat(priceMatch[1]);
+    i++;
+    
+    // Parse charges/fees
+    if (i >= lines.length) return null;
+    const chargesLine = lines[i];
+    const chargesMatch = chargesLine.match(/^([\d.]+)$/);
+    const fees = chargesMatch ? parseFloat(chargesMatch[1]) : 0;
+    i++;
+    
+    // Skip amount line
+    if (i < lines.length && /^[\d,.-]+$/.test(lines[i].replace(/[()]/g, ''))) {
+      i++;
+    }
+    
+    // Skip commission line if present
+    if (i < lines.length && lines[i].includes('Commission')) {
+      i++;
+    }
+    
+    // Determine action type
     let optionAction: 'sell-to-open' | 'buy-to-open' | 'buy-to-close' | 'sell-to-close';
+    
+    // Check for realized gain/loss in next few lines
+    const nextLines = lines.slice(i, Math.min(i + 5, lines.length)).join(' ');
+    const hasRealizedGL = /Realized|Gain\/\(Loss\)/.test(nextLines);
     
     if (category === 'Sale' && action === 'Short Sale') {
       optionAction = 'sell-to-open';
@@ -330,20 +200,23 @@ export class SchwabMonthlyParser implements BrokerParser {
       optionAction = 'buy-to-open';
     }
     
-    // Parse date
+    // Parse full date
     const fullDate = this.parseDate(`${date}/${year}`);
     
     return {
-      date: fullDate,
-      ticker,
-      optionType,
-      action: optionAction,
-      contracts: Math.abs(contracts),
-      strikePrice,
-      premiumPerShare,
-      expirationDate,
-      fees,
-      notes: `Imported from Schwab monthly statement`
+      transaction: {
+        date: fullDate,
+        ticker,
+        optionType,
+        action: optionAction,
+        contracts,
+        strikePrice,
+        premiumPerShare,
+        expirationDate,
+        fees,
+        notes: `Imported from Schwab monthly statement`
+      },
+      nextIndex: i
     };
   }
 

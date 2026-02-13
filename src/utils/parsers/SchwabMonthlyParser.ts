@@ -11,17 +11,28 @@ export class SchwabMonthlyParser implements BrokerParser {
     const warnings: string[] = [];
 
     try {
+      // DEBUG: Log first 500 chars and search for Transaction Details
+      console.log('=== SCHWAB PARSER DEBUG ===');
+      console.log('PDF Text length:', pdfText.length);
+      console.log('First 500 chars:', pdfText.substring(0, 500));
+      console.log('Contains "Transaction Details":', pdfText.includes('Transaction Details'));
+      console.log('Contains "Total Transactions":', pdfText.includes('Total Transactions'));
+      
       // Extract year from statement period
       const yearMatch = pdfText.match(/(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d+-\d+,\s+(\d{4})/);
       const year = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
+      console.log('Year found:', year);
 
       // Find Transaction Details section
       const txnSectionMatch = pdfText.match(/Transaction Details[\s\S]*?Total Transactions/);
       
       if (!txnSectionMatch) {
+        console.log('ERROR: Transaction Details section not found');
         errors.push('Could not find Transaction Details section in PDF');
         return { success: false, transactions: [], optionTransactions: [], errors, warnings };
       }
+      
+      console.log('Transaction section found, length:', txnSectionMatch[0].length);
 
       const txnSection = txnSectionMatch[0];
       const lines = txnSection.split('\n').map(l => l.trim()).filter(l => l.length > 0);

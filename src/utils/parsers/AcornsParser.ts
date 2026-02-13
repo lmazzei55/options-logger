@@ -30,7 +30,7 @@ export class AcornsParser implements BrokerParser {
       
       if (startIndex === -1 || endIndex === -1) {
         errors.push('Could not find Securities Bought section in PDF');
-        return { success: false, transactions: [], errors, warnings };
+        return { success: false, transactions: [], optionTransactions: [], errors, warnings };
       }
       
       // Extract the transaction lines
@@ -104,12 +104,13 @@ export class AcornsParser implements BrokerParser {
       return {
         success: transactions.length > 0,
         transactions,
+        optionTransactions: [], // Acorns doesn't support options
         errors,
         warnings
       };
     } catch (error) {
       errors.push(`Parsing error: ${error instanceof Error ? error.message : String(error)}`);
-      return { success: false, transactions: [], errors, warnings };
+      return { success: false, transactions: [], optionTransactions: [], errors, warnings };
     }
   }
   

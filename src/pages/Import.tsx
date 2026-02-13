@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { getAvailableBrokers, getParser, type ParsedTransaction } from '../utils/parsers';
+import { getAvailableBrokers, getParser, type ParsedTransaction, type ParsedOptionTransaction } from '../utils/parsers';
 import { extractTextFromPDF } from '../utils/pdfExtractor';
 import { Upload, FileText, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 
 const Import: React.FC = () => {
-  const { accounts, addStockTransaction } = useAppContext();
+  const { accounts, addStockTransaction, addOptionTransaction } = useAppContext();
   const navigate = useNavigate();
   
   const [selectedBroker, setSelectedBroker] = useState('');
@@ -14,6 +14,7 @@ const Import: React.FC = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedTransactions, setParsedTransactions] = useState<ParsedTransaction[]>([]);
+  const [parsedOptionTransactions, setParsedOptionTransactions] = useState<ParsedOptionTransaction[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -36,6 +37,7 @@ const Import: React.FC = () => {
     setFiles(pdfFiles);
     setErrors([]);
     setParsedTransactions([]);
+    setParsedOptionTransactions([]);
     setShowPreview(false);
   };
   
@@ -59,6 +61,7 @@ const Import: React.FC = () => {
       }
       
       const allTransactions: ParsedTransaction[] = [];
+      const allOptionTransactions: ParsedOptionTransaction[] = [];
       const allErrors: string[] = [];
       const allWarnings: string[] = [];
       
@@ -74,6 +77,7 @@ const Import: React.FC = () => {
           
           if (result.success) {
             allTransactions.push(...result.transactions);
+            allOptionTransactions.push(...result.optionTransactions);
             if (result.warnings.length > 0) {
               allWarnings.push(`${file.name}: ${result.warnings.join(', ')}`);
             }
@@ -90,12 +94,14 @@ const Import: React.FC = () => {
       
       // Sort transactions by date (oldest first)
       allTransactions.sort((a, b) => a.date.localeCompare(b.date));
+      allOptionTransactions.sort((a, b) => a.date.localeCompare(b.date));
       
       setParsedTransactions(allTransactions);
+      setParsedOptionTransactions(allOptionTransactions);
       setErrors(allErrors);
       setWarnings(allWarnings);
       
-      if (allTransactions.length > 0) {
+      if (allTransactions.length > 0 || allOptionTransactions.length > 0) {
         setShowPreview(true);
       }
     } catch (error) {
@@ -114,6 +120,7 @@ const Import: React.FC = () => {
     let importedCount = 0;
     const importErrors: string[] = [];
     
+    // Import stock transactions
     for (const txn of parsedTransactions) {
       try {
         const totalAmount = txn.shares * txn.pricePerShare + (txn.fees || 0);
@@ -130,7 +137,33 @@ const Import: React.FC = () => {
         });
         importedCount++;
       } catch (error) {
-        importErrors.push(`Failed to import ${txn.ticker} transaction: ${error instanceof Error ? error.message : String(error)}`);
+        importErrors.push(`Failed to import ${txn.ticker} stock transaction: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    
+    // Import options transactions
+    for (const txn of parsedOptionTransactions) {
+      try {
+        const totalPremium = txn.contracts * txn.premiumPerShare * 100; // 100 shares per contract
+        addOptionTransaction({
+          accountId: selectedAccount,
+          ticker: txn.ticker,
+          strategy: 'other', // Default strategy, user can update later
+          optionType: txn.optionType,
+          action: txn.action,
+          contracts: txn.contracts,
+          strikePrice: txn.strikePrice,
+          premiumPerShare: txn.premiumPerShare,
+          totalPremium,
+          fees: txn.fees || 0,
+          expirationDate: txn.expirationDate,
+          transactionDate: txn.date,
+          status: 'open', // Default to open, will be updated by position tracking
+          notes: txn.notes || `Imported from ${brokers.find(b => b.id === selectedBroker)?.name}`
+        });
+        importedCount++;
+      } catch (error) {
+        importErrors.push(`Failed to import ${txn.ticker} option transaction: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     
@@ -260,30 +293,34 @@ const Import: React.FC = () => {
       )}
       
       {/* Preview */}
-      {showPreview && parsedTransactions.length > 0 && (
+      {showPreview && (parsedTransactions.length > 0 || parsedOptionTransactions.length > 0) && (
         <div className="bg-gray-900 rounded-lg shadow-lg p-6 border border-gray-800">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-white">Preview Transactions</h2>
             <div className="flex items-center gap-2 text-green-400">
               <CheckCircle className="w-5 h-5" />
-              <span>{parsedTransactions.length} transaction(s) found</span>
+              <span>{parsedTransactions.length + parsedOptionTransactions.length} transaction(s) found</span>
             </div>
           </div>
           
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-800">
-                  <th className="text-left py-3 px-4 text-gray-400 font-medium">Date</th>
-                  <th className="text-left py-3 px-4 text-gray-400 font-medium">Ticker</th>
-                  <th className="text-left py-3 px-4 text-gray-400 font-medium">Action</th>
-                  <th className="text-right py-3 px-4 text-gray-400 font-medium">Shares</th>
-                  <th className="text-right py-3 px-4 text-gray-400 font-medium">Price</th>
-                  <th className="text-right py-3 px-4 text-gray-400 font-medium">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {parsedTransactions.map((txn, i) => (
+          {/* Stock Transactions */}
+          {parsedTransactions.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-white mb-3">Stock Transactions ({parsedTransactions.length})</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-800">
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Date</th>
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Ticker</th>
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Action</th>
+                      <th className="text-right py-3 px-4 text-gray-400 font-medium">Shares</th>
+                      <th className="text-right py-3 px-4 text-gray-400 font-medium">Price</th>
+                      <th className="text-right py-3 px-4 text-gray-400 font-medium">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parsedTransactions.map((txn, i) => (
                   <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/50">
                     <td className="py-3 px-4 text-gray-300">{txn.date}</td>
                     <td className="py-3 px-4 text-white font-medium">{txn.ticker}</td>
@@ -300,10 +337,65 @@ const Import: React.FC = () => {
                       ${(txn.shares * txn.pricePerShare).toFixed(2)}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                     ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          
+          {/* Options Transactions */}
+          {parsedOptionTransactions.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-white mb-3">Options Transactions ({parsedOptionTransactions.length})</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-800">
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Date</th>
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Ticker</th>
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Type</th>
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Action</th>
+                      <th className="text-right py-3 px-4 text-gray-400 font-medium">Strike</th>
+                      <th className="text-right py-3 px-4 text-gray-400 font-medium">Contracts</th>
+                      <th className="text-right py-3 px-4 text-gray-400 font-medium">Premium</th>
+                      <th className="text-right py-3 px-4 text-gray-400 font-medium">Total</th>
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Expiration</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parsedOptionTransactions.map((txn, i) => (
+                      <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/50">
+                        <td className="py-3 px-4 text-gray-300">{txn.date}</td>
+                        <td className="py-3 px-4 text-white font-medium">{txn.ticker}</td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            txn.optionType === 'call' ? 'bg-blue-900/30 text-blue-400' : 'bg-purple-900/30 text-purple-400'
+                          }`}>
+                            {txn.optionType.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            txn.action.includes('open') ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'
+                          }`}>
+                            {txn.action.toUpperCase().replace(/-/g, ' ')}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right text-gray-300">${txn.strikePrice.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right text-gray-300">{txn.contracts}</td>
+                        <td className="py-3 px-4 text-right text-gray-300">${txn.premiumPerShare.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right text-white font-medium">
+                          ${(txn.contracts * txn.premiumPerShare * 100).toFixed(2)}
+                        </td>
+                        <td className="py-3 px-4 text-gray-300">{txn.expirationDate}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
           
           <div className="flex gap-4 mt-6">
             <button
@@ -311,12 +403,13 @@ const Import: React.FC = () => {
               disabled={!selectedAccount}
               className="flex-1 px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors font-medium"
             >
-              Import {parsedTransactions.length} Transaction(s)
+              Import {parsedTransactions.length + parsedOptionTransactions.length} Transaction(s)
             </button>
             <button
               onClick={() => {
                 setShowPreview(false);
                 setParsedTransactions([]);
+                setParsedOptionTransactions([]);
                 setFiles([]);
               }}
               className="px-6 py-3 bg-gray-700 text-gray-300 rounded-md hover:bg-gray-600 transition-colors font-medium"

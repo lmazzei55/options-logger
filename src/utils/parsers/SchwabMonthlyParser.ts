@@ -40,6 +40,7 @@ export class SchwabMonthlyParser implements BrokerParser {
         
         const date = dateMatch[1];
         const category = dateMatch[2];
+        console.log(`Found date line: ${date} ${category}`);
         i++;
         
         // Check if next line is an action (Short Sale, Cover Short, etc.)
@@ -57,17 +58,22 @@ export class SchwabMonthlyParser implements BrokerParser {
         const tickerMatch = tickerLine.match(/^([A-Z]{2,5})(?:\s|$)/);
         if (!tickerMatch) {
           // Not a valid ticker, skip this transaction
+          console.log(`Skipping - no ticker found. Line: "${tickerLine}"`);
           continue;
         }
         
         const ticker = tickerMatch[1];
+        console.log(`Found ticker: ${ticker}`);
         i++;
         
         // Try to parse as option transaction
         const option = this.parseOptionTransaction(lines, i, ticker, date, category, action, year);
         if (option) {
+          console.log(`✓ Parsed option: ${date} ${ticker} ${option.transaction.optionType} $${option.transaction.strikePrice}`);
           optionTransactions.push(option.transaction);
           i = option.nextIndex;
+        } else {
+          console.log(`✗ Failed to parse option for ${ticker}`);
         }
       }
 

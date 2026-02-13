@@ -36,6 +36,12 @@ export class SchwabMonthlyParser implements BrokerParser {
 
       const txnSection = txnSectionMatch[0];
       const lines = txnSection.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      
+      console.log('Total lines after split:', lines.length);
+      console.log('First 30 lines:');
+      lines.slice(0, 30).forEach((line, idx) => {
+        console.log(`  ${idx}: "${line}"`);
+      });
 
       // Parse transactions by date blocks
       let currentDate = '';

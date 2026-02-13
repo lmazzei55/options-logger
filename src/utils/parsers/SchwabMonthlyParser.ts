@@ -50,38 +50,46 @@ export class SchwabMonthlyParser implements BrokerParser {
           i++;
         }
         
-        // Look for ticker on next line (should be 2-5 letter symbol)
-        if (i >= lines.length) break;
-        
-        const tickerLine = lines[i];
-        // Check if this is a ticker (standalone or with date like "SOFI 01/30/2026")
-        const tickerMatch = tickerLine.match(/^([A-Z]{2,5})(?:\s|$)/);
-        if (!tickerMatch) {
-          // Not a valid ticker, skip this transaction
-          console.log(`Skipping - no ticker found. Line: "${tickerLine}"`);
-          continue;
-        }
-        
-        const ticker = tickerMatch[1];
-        console.log(`Found ticker: ${ticker}`);
-        
-        // Check if ticker line contains expiration date (SOFI format)
-        const tickerExpMatch = tickerLine.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-        const tickerExpiration = tickerExpMatch ? `${tickerExpMatch[3]}-${tickerExpMatch[1]}-${tickerExpMatch[2]}` : null;
-        if (tickerExpiration) {
-          console.log(`  Expiration found in ticker line: ${tickerExpiration}`);
-        }
-        
-        i++;
-        
-        // Try to parse as option transaction
-        const option = this.parseOptionTransaction(lines, i, ticker, date, category, action, year, tickerExpiration);
-        if (option) {
-          console.log(`✓ Parsed option: ${date} ${ticker} ${option.transaction.optionType} $${option.transaction.strikePrice}`);
-          optionTransactions.push(option.transaction);
-          i = option.nextIndex;
-        } else {
-          console.log(`✗ Failed to parse option for ${ticker}`);
+        // Parse all transactions for this date
+        // Keep looking for tickers until we hit another date line or run out of lines
+        while (i < lines.length) {
+          // Check if we've hit the next date line
+          if (/^\d{1,2}\/\d{1,2}\s+(Sale|Purchase)/.test(lines[i])) {
+            break; // Exit inner loop, will be picked up by outer loop
+          }
+          
+          const tickerLine = lines[i];
+          // Check if this is a ticker (standalone or with date like "SOFI 01/30/2026")
+          const tickerMatch = tickerLine.match(/^([A-Z]{2,5})(?:\s|$)/);
+          if (!tickerMatch) {
+            // Not a ticker, move to next line
+            i++;
+            continue;
+          }
+          
+          const ticker = tickerMatch[1];
+          console.log(`Found ticker: ${ticker}`);
+          
+          // Check if ticker line contains expiration date (SOFI format)
+          const tickerExpMatch = tickerLine.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+          const tickerExpiration = tickerExpMatch ? `${tickerExpMatch[3]}-${tickerExpMatch[1]}-${tickerExpMatch[2]}` : null;
+          if (tickerExpiration) {
+            console.log(`  Expiration found in ticker line: ${tickerExpiration}`);
+          }
+          
+          i++;
+          
+          // Try to parse as option transaction
+          const option = this.parseOptionTransaction(lines, i, ticker, date, category, action, year, tickerExpiration);
+          if (option) {
+            console.log(`✓ Parsed option: ${date} ${ticker} ${option.transaction.optionType} $${option.transaction.strikePrice}`);
+            optionTransactions.push(option.transaction);
+            i = option.nextIndex;
+          } else {
+            console.log(`✗ Failed to parse option for ${ticker}`);
+            // If parsing failed, skip ahead to avoid infinite loop
+            break;
+          }
         }
       }
 

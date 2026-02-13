@@ -366,6 +366,7 @@ const Import: React.FC = () => {
                       <th className="text-right py-3 px-4 text-gray-400 font-medium">Strike</th>
                       <th className="text-right py-3 px-4 text-gray-400 font-medium">Contracts</th>
                       <th className="text-right py-3 px-4 text-gray-400 font-medium">Premium</th>
+                      <th className="text-right py-3 px-4 text-gray-400 font-medium">Fees</th>
                       <th className="text-right py-3 px-4 text-gray-400 font-medium">Total</th>
                       <th className="text-left py-3 px-4 text-gray-400 font-medium">Expiration</th>
                     </tr>
@@ -392,6 +393,7 @@ const Import: React.FC = () => {
                         <td className="py-3 px-4 text-right text-gray-300">${txn.strikePrice.toFixed(2)}</td>
                         <td className="py-3 px-4 text-right text-gray-300">{txn.contracts}</td>
                         <td className="py-3 px-4 text-right text-gray-300">${txn.premiumPerShare.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-right text-gray-300">${(txn.fees || 0).toFixed(2)}</td>
                         <td className="py-3 px-4 text-right text-white font-medium">
                           ${(txn.contracts * txn.premiumPerShare * 100).toFixed(2)}
                         </td>

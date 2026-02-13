@@ -52,10 +52,30 @@ export class SchwabMonthlyParser implements BrokerParser {
         
         // Parse all transactions for this date
         // Keep looking for tickers until we hit another date line or run out of lines
+        let currentCategory = category;
+        let currentAction = action;
+        
         while (i < lines.length) {
           // Check if we've hit the next date line
           if (/^\d{1,2}\/\d{1,2}\s+(Sale|Purchase)/.test(lines[i])) {
             break; // Exit inner loop, will be picked up by outer loop
+          }
+          
+          // Check if this line is a category change (Sale/Purchase without date)
+          if (lines[i] === 'Sale' || lines[i] === 'Purchase') {
+            currentCategory = lines[i];
+            console.log(`  Category change: ${currentCategory}`);
+            i++;
+            
+            // Check if next line is an action
+            if (i < lines.length && (lines[i] === 'Short Sale' || lines[i] === 'Cover Short')) {
+              currentAction = lines[i];
+              console.log(`  Action: ${currentAction}`);
+              i++;
+            } else {
+              currentAction = '';
+            }
+            continue;
           }
           
           const tickerLine = lines[i];
@@ -80,7 +100,7 @@ export class SchwabMonthlyParser implements BrokerParser {
           i++;
           
           // Try to parse as option transaction
-          const option = this.parseOptionTransaction(lines, i, ticker, date, category, action, year, tickerExpiration);
+          const option = this.parseOptionTransaction(lines, i, ticker, date, currentCategory, currentAction, year, tickerExpiration);
           if (option) {
             console.log(`✓ Parsed option: ${date} ${ticker} ${option.transaction.optionType} $${option.transaction.strikePrice}`);
             optionTransactions.push(option.transaction);

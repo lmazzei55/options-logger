@@ -3,10 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { getAvailableBrokers, getParser, type ParsedTransaction, type ParsedOptionTransaction } from '../utils/parsers';
 import { extractTextFromPDF } from '../utils/pdfExtractor';
+import {
+  validateStockTransaction,
+  validateOptionTransaction,
+  findDuplicateStockTransactions,
+  findDuplicateOptionTransactions,
+  type ValidationError
+} from '../utils/validation';
 import { Upload, FileText, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 
 const Import: React.FC = () => {
-  const { accounts, addStockTransaction, addOptionTransaction } = useAppContext();
+  const { accounts, stockTransactions, optionTransactions, addStockTransaction, addOptionTransaction } = useAppContext();
   const navigate = useNavigate();
   
   const [selectedBroker, setSelectedBroker] = useState('');
@@ -17,6 +24,8 @@ const Import: React.FC = () => {
   const [parsedOptionTransactions, setParsedOptionTransactions] = useState<ParsedOptionTransaction[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [duplicateCount, setDuplicateCount] = useState(0);
   const [showPreview, setShowPreview] = useState(false);
   
   const brokers = getAvailableBrokers();
@@ -96,12 +105,110 @@ const Import: React.FC = () => {
       allTransactions.sort((a, b) => a.date.localeCompare(b.date));
       allOptionTransactions.sort((a, b) => a.date.localeCompare(b.date));
       
-      console.log('=== PARSED TRANSACTIONS ===');
-      console.log('Stock transactions:', allTransactions.length);
-      console.log('Option transactions:', allOptionTransactions.length);
-      allOptionTransactions.forEach((t, idx) => {
-        console.log(`  ${idx + 1}. ${t.date} ${t.ticker} ${t.optionType} $${t.strikePrice} ${t.action} (${t.contracts} contracts)`);
+      // Validate and check for duplicates
+      const allValidationErrors: ValidationError[] = [];
+      let duplicates = 0;
+
+      // Validate stock transactions
+      allTransactions.forEach((txn, idx) => {
+        const validation = validateStockTransaction({
+          accountId: selectedAccount || '',
+          date: txn.date,
+          ticker: txn.ticker,
+          action: txn.action,
+          shares: txn.shares,
+          pricePerShare: txn.pricePerShare,
+          fees: txn.fees || 0,
+          totalAmount: txn.shares * txn.pricePerShare + (txn.fees || 0),
+          notes: txn.notes
+        }, accounts);
+
+        validation.errors.forEach(err => {
+          allValidationErrors.push({ ...err, field: `Stock #${idx + 1} - ${err.field}` });
+        });
+        validation.warnings.forEach(warn => {
+          allValidationErrors.push({ ...warn, field: `Stock #${idx + 1} - ${warn.field}` });
+        });
+
+        // Check for duplicates
+        const dups = findDuplicateStockTransactions({
+          accountId: selectedAccount || '',
+          date: txn.date,
+          ticker: txn.ticker,
+          action: txn.action,
+          shares: txn.shares,
+          pricePerShare: txn.pricePerShare,
+          fees: txn.fees || 0,
+          totalAmount: txn.shares * txn.pricePerShare + (txn.fees || 0),
+          notes: txn.notes
+        }, stockTransactions);
+
+        if (dups.length > 0) {
+          duplicates++;
+          allValidationErrors.push({
+            field: `Stock #${idx + 1}`,
+            message: `Duplicate transaction found (${txn.ticker} on ${txn.date})`,
+            severity: 'warning'
+          });
+        }
       });
+
+      // Validate option transactions
+      allOptionTransactions.forEach((txn, idx) => {
+        const validation = validateOptionTransaction({
+          accountId: selectedAccount || '',
+          ticker: txn.ticker,
+          strategy: 'other',
+          optionType: txn.optionType,
+          action: txn.action,
+          contracts: txn.contracts,
+          strikePrice: txn.strikePrice,
+          premiumPerShare: txn.premiumPerShare,
+          totalPremium: txn.contracts * txn.premiumPerShare * 100,
+          fees: txn.fees || 0,
+          expirationDate: txn.expirationDate,
+          transactionDate: txn.date,
+          status: 'open',
+          notes: txn.notes
+        }, accounts);
+
+        validation.errors.forEach(err => {
+          allValidationErrors.push({ ...err, field: `Option #${idx + 1} - ${err.field}` });
+        });
+        validation.warnings.forEach(warn => {
+          allValidationErrors.push({ ...warn, field: `Option #${idx + 1} - ${warn.field}` });
+        });
+
+        // Check for duplicates
+        const dups = findDuplicateOptionTransactions({
+          accountId: selectedAccount || '',
+          ticker: txn.ticker,
+          strategy: 'other',
+          optionType: txn.optionType,
+          action: txn.action,
+          contracts: txn.contracts,
+          strikePrice: txn.strikePrice,
+          premiumPerShare: txn.premiumPerShare,
+          totalPremium: txn.contracts * txn.premiumPerShare * 100,
+          fees: txn.fees || 0,
+          expirationDate: txn.expirationDate,
+          transactionDate: txn.date,
+          status: 'open',
+          notes: txn.notes
+        }, optionTransactions);
+
+        if (dups.length > 0) {
+          duplicates++;
+          allValidationErrors.push({
+            field: `Option #${idx + 1}`,
+            message: `Duplicate transaction found (${txn.ticker} ${txn.optionType} on ${txn.date})`,
+            severity: 'warning'
+          });
+        }
+      });
+
+      setValidationErrors(allValidationErrors);
+      setDuplicateCount(duplicates);
       
       setParsedTransactions(allTransactions);
       setParsedOptionTransactions(allOptionTransactions);
@@ -121,6 +228,13 @@ const Import: React.FC = () => {
   const handleImport = () => {
     if (!selectedAccount) {
       setErrors(['Please select an account to import transactions to']);
+      return;
+    }
+    
+    // Check for validation errors
+    const criticalErrors = validationErrors.filter(e => e.severity === 'error');
+    if (criticalErrors.length > 0) {
+      setErrors(['Cannot import: Please fix validation errors first']);
       return;
     }
     
@@ -295,6 +409,50 @@ const Import: React.FC = () => {
                 ))}
               </ul>
             </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Validation Errors and Warnings */}
+      {validationErrors.length > 0 && (
+        <div className="bg-gray-900 rounded-lg shadow-lg p-6 border border-gray-800">
+          <h3 className="text-lg font-semibold text-white mb-4">Validation Results</h3>
+          
+          {duplicateCount > 0 && (
+            <div className="bg-yellow-900/20 border border-yellow-800 rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-yellow-300">
+                    <strong>{duplicateCount}</strong> duplicate transaction(s) detected. These may have been imported previously.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {validationErrors.map((error, i) => (
+              <div
+                key={i}
+                className={`flex items-start gap-2 p-3 rounded-lg ${
+                  error.severity === 'error'
+                    ? 'bg-red-900/20 border border-red-800'
+                    : 'bg-yellow-900/20 border border-yellow-800'
+                }`}
+              >
+                {error.severity === 'error' ? (
+                  <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1 text-sm">
+                  <span className={error.severity === 'error' ? 'text-red-300' : 'text-yellow-300'}>
+                    <strong>{error.field}:</strong> {error.message}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

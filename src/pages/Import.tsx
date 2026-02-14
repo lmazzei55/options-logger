@@ -238,6 +238,19 @@ const Import: React.FC = () => {
       return;
     }
     
+    // Check for duplicate warnings
+    const duplicateWarnings = validationErrors.filter(e => 
+      e.severity === 'warning' && e.message.includes('Duplicate transaction')
+    );
+    if (duplicateWarnings.length > 0) {
+      const confirmImport = window.confirm(
+        `${duplicateWarnings.length} duplicate transaction(s) detected. These may have been imported previously.\n\nDo you want to import them anyway?`
+      );
+      if (!confirmImport) {
+        return;
+      }
+    }
+    
     let importedCount = 0;
     const importErrors: string[] = [];
     

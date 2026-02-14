@@ -30,10 +30,22 @@ export const validateStockTransaction = (
   }
 
   // Validate ticker format
-  if (!transaction.ticker || !/^[A-Z]{1,5}$/.test(transaction.ticker)) {
+  if (!transaction.ticker) {
     errors.push({
       field: 'ticker',
-      message: 'Invalid ticker format (must be 1-5 uppercase letters)',
+      message: 'Ticker is required',
+      severity: 'error'
+    });
+  } else if (!/^[A-Z]+$/.test(transaction.ticker)) {
+    errors.push({
+      field: 'ticker',
+      message: 'Ticker must contain only uppercase letters (no numbers or special characters)',
+      severity: 'error'
+    });
+  } else if (transaction.ticker.length < 1 || transaction.ticker.length > 5) {
+    errors.push({
+      field: 'ticker',
+      message: 'Ticker must be 1-5 characters',
       severity: 'error'
     });
   }
@@ -84,10 +96,10 @@ export const validateStockTransaction = (
       severity: 'error'
     });
   } else if (transactionDate > now) {
-    warnings.push({
+    errors.push({
       field: 'date',
-      message: 'Transaction date is in the future',
-      severity: 'warning'
+      message: 'Transaction date cannot be in the future',
+      severity: 'error'
     });
   }
 
@@ -136,10 +148,22 @@ export const validateOptionTransaction = (
   }
 
   // Validate ticker format
-  if (!transaction.ticker || !/^[A-Z]{1,5}$/.test(transaction.ticker)) {
+  if (!transaction.ticker) {
     errors.push({
       field: 'ticker',
-      message: 'Invalid ticker format (must be 1-5 uppercase letters)',
+      message: 'Ticker is required',
+      severity: 'error'
+    });
+  } else if (!/^[A-Z]+$/.test(transaction.ticker)) {
+    errors.push({
+      field: 'ticker',
+      message: 'Ticker must contain only uppercase letters (no numbers or special characters)',
+      severity: 'error'
+    });
+  } else if (transaction.ticker.length < 1 || transaction.ticker.length > 5) {
+    errors.push({
+      field: 'ticker',
+      message: 'Ticker must be 1-5 characters',
       severity: 'error'
     });
   }
@@ -199,10 +223,10 @@ export const validateOptionTransaction = (
       severity: 'error'
     });
   } else if (transactionDate > now) {
-    warnings.push({
+    errors.push({
       field: 'transactionDate',
-      message: 'Transaction date is in the future',
-      severity: 'warning'
+      message: 'Transaction date cannot be in the future',
+      severity: 'error'
     });
   }
 

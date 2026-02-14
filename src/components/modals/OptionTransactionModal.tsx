@@ -155,6 +155,10 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
     }
     if (!formData.ticker) {
       newErrors.ticker = 'Ticker is required';
+    } else if (!/^[A-Z]+$/.test(formData.ticker)) {
+      newErrors.ticker = 'Ticker must contain only uppercase letters (no numbers or special characters)';
+    } else if (formData.ticker.length < 1 || formData.ticker.length > 5) {
+      newErrors.ticker = 'Ticker must be 1-5 characters';
     }
     if (formData.contracts <= 0) {
       newErrors.contracts = 'Contracts must be greater than 0';
@@ -173,6 +177,15 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
     }
     if (!hasSufficientCash) {
       newErrors.strikePrice = `Insufficient cash. Available: $${availableCash.toFixed(2)}. Required: $${collateralRequired.toFixed(2)}.`;
+    }
+    
+    // Validate transaction date not in future
+    const transactionDate = new Date(formData.transactionDate);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    transactionDate.setHours(0, 0, 0, 0);
+    if (transactionDate > now) {
+      newErrors.transactionDate = 'Transaction date cannot be in the future';
     }
 
     setErrors(newErrors);
@@ -264,6 +277,9 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
               onChange={(e) => setFormData({ ...formData, transactionDate: e.target.value })}
               className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            {errors.transactionDate && (
+              <p className="text-sm text-red-400 mt-1">{errors.transactionDate}</p>
+            )}
           </div>
 
           <div>

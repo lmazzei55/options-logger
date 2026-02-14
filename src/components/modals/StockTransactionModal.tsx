@@ -99,6 +99,10 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
     }
     if (!formData.ticker) {
       newErrors.ticker = 'Ticker is required';
+    } else if (!/^[A-Z]+$/.test(formData.ticker)) {
+      newErrors.ticker = 'Ticker must contain only uppercase letters (no numbers or special characters)';
+    } else if (formData.ticker.length < 1 || formData.ticker.length > 5) {
+      newErrors.ticker = 'Ticker must be 1-5 characters';
     }
     if (formData.shares <= 0) {
       newErrors.shares = 'Shares must be greater than 0';
@@ -108,6 +112,15 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
     }
     if (!canSell) {
       newErrors.shares = `Insufficient shares. You own ${currentPosition?.shares || 0} shares.`;
+    }
+    
+    // Validate date not in future
+    const transactionDate = new Date(formData.date);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0); // Reset to start of day for comparison
+    transactionDate.setHours(0, 0, 0, 0);
+    if (transactionDate > now) {
+      newErrors.date = 'Date cannot be in the future';
     }
 
     setErrors(newErrors);
@@ -183,6 +196,9 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
               className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            {errors.date && (
+              <p className="text-sm text-red-400 mt-1">{errors.date}</p>
+            )}
           </div>
 
           <div>

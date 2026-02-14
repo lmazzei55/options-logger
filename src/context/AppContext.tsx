@@ -554,9 +554,82 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const importData = (jsonData: string): boolean => {
     try {
       const parsed = JSON.parse(jsonData);
-      setAccounts(parsed.accounts || []);
-      setStockTransactions(parsed.stockTransactions || []);
-      setOptionTransactions(parsed.optionTransactions || []);
+      
+      // Validate the structure
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Invalid data format');
+      }
+      
+      const importAccounts = parsed.accounts || [];
+      const importStockTxns = parsed.stockTransactions || [];
+      const importOptionTxns = parsed.optionTransactions || [];
+      
+      // Validate all stock transactions
+      const stockErrors: string[] = [];
+      for (let i = 0; i < importStockTxns.length; i++) {
+        const txn = importStockTxns[i];
+        
+        // Check required fields
+        if (!txn.id || !txn.accountId || !txn.ticker || !txn.date) {
+          stockErrors.push(`Stock transaction ${i + 1}: Missing required fields`);
+          continue;
+        }
+        
+        // Validate date format
+        const date = new Date(txn.date);
+        if (isNaN(date.getTime())) {
+          stockErrors.push(`Stock transaction ${i + 1} (${txn.ticker}): Invalid date format`);
+        }
+        
+        // Validate numeric fields
+        if (typeof txn.shares !== 'number' || txn.shares <= 0) {
+          stockErrors.push(`Stock transaction ${i + 1} (${txn.ticker}): Invalid shares`);
+        }
+        if (typeof txn.pricePerShare !== 'number' || txn.pricePerShare < 0) {
+          stockErrors.push(`Stock transaction ${i + 1} (${txn.ticker}): Invalid price`);
+        }
+      }
+      
+      // Validate all option transactions
+      const optionErrors: string[] = [];
+      for (let i = 0; i < importOptionTxns.length; i++) {
+        const txn = importOptionTxns[i];
+        
+        // Check required fields
+        if (!txn.id || !txn.accountId || !txn.ticker || !txn.transactionDate || !txn.expirationDate) {
+          optionErrors.push(`Option transaction ${i + 1}: Missing required fields`);
+          continue;
+        }
+        
+        // Validate date formats
+        const txnDate = new Date(txn.transactionDate);
+        const expDate = new Date(txn.expirationDate);
+        if (isNaN(txnDate.getTime())) {
+          optionErrors.push(`Option transaction ${i + 1} (${txn.ticker}): Invalid transaction date`);
+        }
+        if (isNaN(expDate.getTime())) {
+          optionErrors.push(`Option transaction ${i + 1} (${txn.ticker}): Invalid expiration date`);
+        }
+        
+        // Validate numeric fields
+        if (typeof txn.contracts !== 'number' || txn.contracts <= 0) {
+          optionErrors.push(`Option transaction ${i + 1} (${txn.ticker}): Invalid contracts`);
+        }
+        if (typeof txn.strikePrice !== 'number' || txn.strikePrice <= 0) {
+          optionErrors.push(`Option transaction ${i + 1} (${txn.ticker}): Invalid strike price`);
+        }
+      }
+      
+      // If there are any validation errors, throw them
+      const allErrors = [...stockErrors, ...optionErrors];
+      if (allErrors.length > 0) {
+        throw new Error(`Import validation failed:\n${allErrors.slice(0, 5).join('\n')}${allErrors.length > 5 ? `\n...and ${allErrors.length - 5} more errors` : ''}`);
+      }
+      
+      // All validation passed, import the data
+      setAccounts(importAccounts);
+      setStockTransactions(importStockTxns);
+      setOptionTransactions(importOptionTxns);
       setTags(parsed.tags || []);
       setTemplates(parsed.templates || []);
       if (parsed.settings) {
@@ -565,6 +638,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       return true;
     } catch (error) {
       console.error('Failed to import data:', error);
+      alert(`Failed to import data: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   };

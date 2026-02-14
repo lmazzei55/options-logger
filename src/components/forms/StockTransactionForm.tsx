@@ -57,7 +57,13 @@ export const StockTransactionForm: React.FC<StockTransactionFormProps> = ({
     const newErrors: Record<string, string> = {};
     
     if (!formData.accountId) newErrors.accountId = 'Account is required';
-    if (!formData.ticker) newErrors.ticker = 'Ticker is required';
+    if (!formData.ticker) {
+      newErrors.ticker = 'Ticker is required';
+    } else if (!/^[A-Z]+$/.test(formData.ticker)) {
+      newErrors.ticker = 'Ticker must contain only uppercase letters (no numbers or special characters)';
+    } else if (formData.ticker.length < 1 || formData.ticker.length > 5) {
+      newErrors.ticker = 'Ticker must be 1-5 characters';
+    }
     if (!formData.shares || parseFloat(formData.shares) <= 0) {
       newErrors.shares = 'Shares must be greater than 0';
     }

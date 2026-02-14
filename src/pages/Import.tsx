@@ -96,13 +96,6 @@ const Import: React.FC = () => {
       allTransactions.sort((a, b) => a.date.localeCompare(b.date));
       allOptionTransactions.sort((a, b) => a.date.localeCompare(b.date));
       
-      console.log('=== PARSED TRANSACTIONS ===');
-      console.log('Stock transactions:', allTransactions.length);
-      console.log('Option transactions:', allOptionTransactions.length);
-      allOptionTransactions.forEach((t, idx) => {
-        console.log(`  ${idx + 1}. ${t.date} ${t.ticker} ${t.optionType} $${t.strikePrice} ${t.action} (${t.contracts} contracts)`);
-      });
-      
       setParsedTransactions(allTransactions);
       setParsedOptionTransactions(allOptionTransactions);
       setErrors(allErrors);

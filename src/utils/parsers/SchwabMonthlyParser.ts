@@ -40,7 +40,6 @@ export class SchwabMonthlyParser implements BrokerParser {
         
         const date = dateMatch[1];
         const category = dateMatch[2];
-        console.log(`Found date line: ${date} ${category}`);
         i++;
         
         // Check if next line is an action (Short Sale, Cover Short, etc.)
@@ -64,13 +63,11 @@ export class SchwabMonthlyParser implements BrokerParser {
           // Check if this line is a category change (Sale/Purchase without date)
           if (lines[i] === 'Sale' || lines[i] === 'Purchase') {
             currentCategory = lines[i];
-            console.log(`  Category change: ${currentCategory}`);
             i++;
             
             // Check if next line is an action
             if (i < lines.length && (lines[i] === 'Short Sale' || lines[i] === 'Cover Short')) {
               currentAction = lines[i];
-              console.log(`  Action: ${currentAction}`);
               i++;
             } else {
               currentAction = '';
@@ -88,13 +85,11 @@ export class SchwabMonthlyParser implements BrokerParser {
           }
           
           const ticker = tickerMatch[1];
-          console.log(`Found ticker: ${ticker}`);
           
           // Check if ticker line contains expiration date (SOFI format)
           const tickerExpMatch = tickerLine.match(/(\d{2})\/(\d{2})\/(\d{4})/);
           const tickerExpiration = tickerExpMatch ? `${tickerExpMatch[3]}-${tickerExpMatch[1]}-${tickerExpMatch[2]}` : null;
           if (tickerExpiration) {
-            console.log(`  Expiration found in ticker line: ${tickerExpiration}`);
           }
           
           i++;
@@ -102,11 +97,9 @@ export class SchwabMonthlyParser implements BrokerParser {
           // Try to parse as option transaction
           const option = this.parseOptionTransaction(lines, i, ticker, date, currentCategory, currentAction, year, tickerExpiration);
           if (option) {
-            console.log(`✓ Parsed option: ${date} ${ticker} ${option.transaction.optionType} $${option.transaction.strikePrice}`);
             optionTransactions.push(option.transaction);
             i = option.nextIndex;
           } else {
-            console.log(`✗ Failed to parse option for ${ticker}`);
             // If parsing failed, skip ahead to avoid infinite loop
             break;
           }
@@ -154,39 +147,31 @@ export class SchwabMonthlyParser implements BrokerParser {
     
     let i = startIndex;
     
-    console.log(`  Parsing ${ticker} starting at line ${i}:`, lines[i]);
     
     let expirationDate: string;
     
     // If expiration was in ticker line (SOFI format), use it
     if (tickerExpiration) {
       expirationDate = tickerExpiration;
-      console.log(`  Using expiration from ticker: ${expirationDate}`);
     } else {
       // Parse expiration date line (AEHR format: "03/20/2026 40.00")
       if (i >= lines.length) {
-        console.log(`  ✗ Out of bounds at line ${i}`);
         return null;
       }
       const expDateLine = lines[i];
-      console.log(`  Exp date line: "${expDateLine}"`);
       const expDateMatch = expDateLine.match(/(\d{2})\/(\d{2})\/(\d{4})/);
       if (!expDateMatch) {
-        console.log(`  ✗ No expiration date found`);
         return null;
       }
       expirationDate = `${expDateMatch[3]}-${expDateMatch[1]}-${expDateMatch[2]}`;
-      console.log(`  Expiration: ${expirationDate}`);
       i++;
     }
     
     // Parse C or P (may be standalone or combined with strike like "26.00 P")
     if (i >= lines.length) {
-      console.log(`  ✗ Out of bounds looking for C/P at line ${i}`);
       return null;
     }
     const cpLine = lines[i];
-    console.log(`  C/P line: "${cpLine}"`);
     
     let optionType: 'call' | 'put';
     let strikeFromCPLine: number | null = null;
@@ -201,14 +186,11 @@ export class SchwabMonthlyParser implements BrokerParser {
       if (match) {
         strikeFromCPLine = parseFloat(match[1]);
         optionType = match[2] === 'C' ? 'call' : 'put';
-        console.log(`  Strike+C/P combined: $${strikeFromCPLine} ${optionType}`);
         i++;
       } else {
-        console.log(`  ✗ Could not parse combined strike+C/P`);
         return null;
       }
     } else {
-      console.log(`  ✗ Not C or P`);
       return null;
     }
     
@@ -222,14 +204,12 @@ export class SchwabMonthlyParser implements BrokerParser {
     let strikePrice: number;
     if (strikeFromCPLine !== null) {
       strikePrice = strikeFromCPLine;
-      console.log(`  Using strike from C/P line: $${strikePrice}`);
     } else {
       if (i >= lines.length) return null;
       const strikeLine = lines[i];
       const strikeMatch = strikeLine.match(/\$(\d+(?:\.\d+)?)/);
       if (!strikeMatch) return null;
       strikePrice = parseFloat(strikeMatch[1]);
-      console.log(`  Strike from separate line: $${strikePrice}`);
       i++;
     }
     
@@ -275,12 +255,10 @@ export class SchwabMonthlyParser implements BrokerParser {
     // Determine action type
     let optionAction: 'sell-to-open' | 'buy-to-open' | 'buy-to-close' | 'sell-to-close';
     
-    console.log(`  Action determination: category="${category}", action="${action}"`);
     
     // Check for realized gain/loss in next few lines
     const nextLines = lines.slice(i, Math.min(i + 5, lines.length)).join(' ');
     const hasRealizedGL = /Realized|Gain\/\(Loss\)/.test(nextLines);
-    console.log(`  Has realized G/L: ${hasRealizedGL}`);
     
     if (category === 'Sale' && action === 'Short Sale') {
       optionAction = 'sell-to-open';
@@ -296,7 +274,6 @@ export class SchwabMonthlyParser implements BrokerParser {
       optionAction = 'buy-to-open';
     }
     
-    console.log(`  Determined action: ${optionAction}`)
     
     // Parse full date
     const fullDate = this.parseDate(`${date}/${year}`);

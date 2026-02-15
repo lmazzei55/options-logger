@@ -443,10 +443,14 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const newTxnId = addOptionTransaction(closingOptionTxn);
     
     // Check for wash sale if this was a loss
+    console.log('[Wash Sale Check] realizedPL:', realizedPL, 'closeType:', closeType);
     if (realizedPL < 0 && closeType === 'closed') {
       // Dynamically import and check for wash sale
       import('../utils/positionCalculations').then(({ detectWashSales }) => {
-        const washSaleInfo = detectWashSales([...optionTransactions, { ...closingOptionTxn, id: newTxnId }], newTxnId);
+        const allTransactions = [...optionTransactions, { ...closingOptionTxn, id: newTxnId }];
+        console.log('[Wash Sale Check] Checking transaction:', newTxnId, 'Total transactions:', allTransactions.length);
+        const washSaleInfo = detectWashSales(allTransactions, newTxnId);
+        console.log('[Wash Sale Check] Result:', washSaleInfo);
         
         if (washSaleInfo && washSaleInfo.hasWashSale) {
           alert(

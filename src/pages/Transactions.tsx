@@ -239,6 +239,7 @@ const Transactions: React.FC = () => {
                       {sortField === 'amount' && <ArrowUpDown className="w-3 h-3" />}
                     </div>
                   </th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Fees</th>
                   {!selectedAccountId && (
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Account</th>
                   )}
@@ -277,6 +278,9 @@ const Transactions: React.FC = () => {
                       transaction.amount >= 0 ? 'text-green-400' : 'text-red-400'
                     }`}>
                       {formatCurrency(transaction.amount)}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-right text-gray-400">
+                      {formatCurrency((transaction as any).fees || 0)}
                     </td>
                     {!selectedAccountId && (
                       <td className="py-3 px-4 text-sm text-gray-400">

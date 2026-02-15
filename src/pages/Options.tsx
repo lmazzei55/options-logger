@@ -632,9 +632,14 @@ const Options: React.FC = () => {
       {/* Additional Analytics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
-          <p className="text-sm text-gray-400 mb-2">Avg Return Per Trade</p>
+          <p className="text-sm text-gray-400 mb-2" title="Average realized profit/loss per closed trade">
+            Avg Return Per Trade
+          </p>
           <p className="text-xl font-bold text-white">
             {formatCurrency(analytics.averageReturnPerTrade)}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Total P/L ÷ Closed Trades
           </p>
         </div>
 

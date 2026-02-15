@@ -88,6 +88,80 @@ export function calculatePartialClose(
  * A wash sale occurs when you sell a security at a loss and buy a substantially identical
  * security within 30 days before or after the sale
  */
+/**
+ * Detect potential wash sales for stock transactions
+ */
+export function detectStockWashSales(
+  transactions: any[], // StockTransaction type
+  targetTransactionId: string
+): WashSaleInfo | null {
+  const targetTxn = transactions.find(t => t.id === targetTransactionId);
+  if (!targetTxn) return null;
+  
+  // Only check sell transactions
+  if (targetTxn.action !== 'sell') {
+    return null;
+  }
+  
+  // Calculate if this was a loss
+  // For stocks, we need to compare against the cost basis
+  // This is simplified - a full implementation would track specific lots
+  const saleProceeds = targetTxn.totalAmount; // Already includes fees (subtracted)
+  
+  // Find the most recent buy of the same ticker before this sale
+  const buyTransactions = transactions
+    .filter(t => 
+      t.ticker === targetTxn.ticker &&
+      t.action === 'buy' &&
+      new Date(t.date) < new Date(targetTxn.date)
+    )
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  
+  if (buyTransactions.length === 0) return null;
+  
+  const mostRecentBuy = buyTransactions[0];
+  const costBasis = mostRecentBuy.totalAmount; // Already includes fees (added)
+  const realizedPL = saleProceeds - costBasis;
+  
+  if (realizedPL >= 0) {
+    // No loss, no wash sale
+    return null;
+  }
+  
+  const targetDate = new Date(targetTxn.date);
+  const washSalePeriodStart = new Date(targetDate);
+  washSalePeriodStart.setDate(washSalePeriodStart.getDate() - 30);
+  const washSalePeriodEnd = new Date(targetDate);
+  washSalePeriodEnd.setDate(washSalePeriodEnd.getDate() + 30);
+  
+  // Find related buy transactions within the wash sale period
+  const relatedTransactions = transactions.filter(t => {
+    if (t.id === targetTransactionId) return false;
+    if (t.ticker !== targetTxn.ticker) return false;
+    if (t.action !== 'buy') return false;
+    
+    const txnDate = new Date(t.date);
+    if (txnDate < washSalePeriodStart || txnDate > washSalePeriodEnd) return false;
+    
+    return true;
+  });
+  
+  const hasWashSale = relatedTransactions.length > 0;
+  
+  return {
+    transactionId: targetTransactionId,
+    ticker: targetTxn.ticker,
+    lossAmount: Math.abs(realizedPL),
+    washSalePeriodStart,
+    washSalePeriodEnd,
+    hasWashSale,
+    relatedTransactionIds: relatedTransactions.map(t => t.id)
+  };
+}
+
+/**
+ * Detect potential wash sales for option transactions
+ */
 export function detectWashSales(
   transactions: OptionTransaction[],
   targetTransactionId: string

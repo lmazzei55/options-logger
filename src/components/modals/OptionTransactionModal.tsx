@@ -307,6 +307,11 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
                          p.status === 'open'
                   );
                   if (selectedPosition) {
+                    // If editing, add back the contracts from the original transaction
+                    const availableContracts = transaction 
+                      ? selectedPosition.contracts + transaction.contracts
+                      : selectedPosition.contracts;
+                    
                     setFormData({
                       ...formData,
                       ticker,
@@ -314,7 +319,7 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
                       expirationDate: exp,
                       optionType: type as 'call' | 'put',
                       strategy: selectedPosition.strategy,
-                      contracts: Math.min(formData.contracts, selectedPosition.contracts),
+                      contracts: Math.min(formData.contracts, availableContracts),
                       premiumPerShare: selectedPosition.totalPremium / (selectedPosition.contracts * 100) / 2 // Default to half premium for closing
                     });
                   }

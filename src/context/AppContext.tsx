@@ -200,8 +200,25 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       return { ...acc, currentCash: acc.currentCash + cashChange };
     }));
     
+    // Check for wash sale if this is a sell transaction
+    if (transaction.action === 'sell') {
+      import('../utils/positionCalculations').then(({ detectStockWashSales }) => {
+        const allTransactions = [...stockTransactions, newTransaction];
+        const washSaleInfo = detectStockWashSales(allTransactions, newTransaction.id);
+        
+        if (washSaleInfo && washSaleInfo.hasWashSale) {
+          alert(
+            `⚠️ Potential Wash Sale Detected\n\n` +
+            `You sold ${transaction.ticker} at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
+            `You have ${washSaleInfo.relatedTransactionIds.length} related buy transaction(s) within 30 days before/after this sale.\n\n` +
+            `This may trigger wash sale rules, which could disallow the loss deduction for tax purposes.`
+          );
+        }
+      });
+    }
+    
     return newTransaction.id;
-  }, []);
+  }, [stockTransactions]);
   
   const updateStockTransaction = (id: string, updates: Partial<StockTransaction>) => {
     setStockTransactions(prev => {

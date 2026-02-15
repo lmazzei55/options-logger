@@ -45,7 +45,7 @@ interface AppContextType {
   deleteStockTransaction: (id: string) => void;
   
   // Option transaction actions
-  addOptionTransaction: (transaction: Omit<OptionTransaction, 'id'>) => void;
+  addOptionTransaction: (transaction: Omit<OptionTransaction, 'id'>) => string;
   updateOptionTransaction: (id: string, transaction: Partial<OptionTransaction>) => void;
   deleteOptionTransaction: (id: string) => void;
   
@@ -54,7 +54,8 @@ interface AppContextType {
     positionId: string,
     closeType: 'closed' | 'expired' | 'assigned',
     closePrice?: number,
-    fees?: number
+    fees?: number,
+    contractsToClose?: number
   ) => void;
   
   // Tag actions
@@ -252,10 +253,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   // OPTION TRANSACTION ACTIONS
   // ==========================================
   
-  const addOptionTransaction = useCallback((transaction: Omit<OptionTransaction, 'id'>) => {
+  const addOptionTransaction = useCallback((transaction: Omit<OptionTransaction, 'id'>): string => {
+    const newId = generateId();
     const newTransaction: OptionTransaction = {
       ...transaction,
-      id: generateId()
+      id: newId
     };
     setOptionTransactions(prev => [...prev, newTransaction]);
     
@@ -283,6 +285,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       
       return { ...acc, currentCash: acc.currentCash + cashChange };
     }));
+    
+    return newId;
   }, []);
   
   const updateOptionTransaction = (id: string, updates: Partial<OptionTransaction>) => {
@@ -335,7 +339,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     positionId: string,
     closeType: 'closed' | 'expired' | 'assigned',
     closePrice?: number, // price per share for buy-to-close / sell-to-close
-    fees?: number // fees for closing transaction
+    fees?: number, // fees for closing transaction
+    contractsToClose?: number // number of contracts to close (for partial close)
   ) => {
     // We need current state, so we use functional updates
     // First, find the position and original transaction
@@ -355,44 +360,56 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const isSeller = openTxn.action === 'sell-to-open';
     const closingAction = isSeller ? 'buy-to-close' : 'sell-to-close';
     
+    // Determine how many contracts to close
+    const contractsClosing = contractsToClose || position.contracts;
+    if (contractsClosing > position.contracts) {
+      console.error('Cannot close more contracts than available');
+      return;
+    }
+    
     // Calculate realized P&L
     const closeFees = fees || 0;
     let realizedPL = 0;
     let closePremiumPerShare = closePrice || 0;
-    let closeTotalPremium = closePremiumPerShare * position.contracts * 100;
+    let closeTotalPremium = closePremiumPerShare * contractsClosing * 100;
+    
+    // Calculate proportional open premium and fees
+    const proportionClosing = contractsClosing / openTxn.contracts;
+    const proportionalOpenPremium = openTxn.totalPremium * proportionClosing;
+    const proportionalOpenFees = openTxn.fees * proportionClosing;
     
     if (closeType === 'expired') {
       // Option expired worthless
       closePremiumPerShare = 0;
       closeTotalPremium = 0;
       if (isSeller) {
-        // Seller keeps full premium
-        realizedPL = openTxn.totalPremium - openTxn.fees;
+        // Seller keeps proportional premium
+        realizedPL = proportionalOpenPremium - proportionalOpenFees;
       } else {
-        // Buyer loses full premium
-        realizedPL = -(openTxn.totalPremium + openTxn.fees);
+        // Buyer loses proportional premium
+        realizedPL = -(proportionalOpenPremium + proportionalOpenFees);
       }
     } else if (closeType === 'assigned') {
       // Option was assigned - premium already received/paid, now stock changes hands
       closePremiumPerShare = 0;
       closeTotalPremium = 0;
       if (isSeller) {
-        // Seller keeps the premium received at open
-        realizedPL = openTxn.totalPremium - openTxn.fees;
+        // Seller keeps the proportional premium received at open
+        realizedPL = proportionalOpenPremium - proportionalOpenFees;
       } else {
-        // Buyer paid premium to open, now exercises
-        realizedPL = -(openTxn.totalPremium + openTxn.fees);
+        // Buyer paid proportional premium to open, now exercises
+        realizedPL = -(proportionalOpenPremium + proportionalOpenFees);
       }
     } else {
       // Closed manually (bought/sold to close)
       if (isSeller) {
         // Sold to open, bought to close
-        // P&L = premium received - premium paid to close - open fees - close fees
-        realizedPL = openTxn.totalPremium - closeTotalPremium - openTxn.fees - closeFees;
+        // P&L = proportional premium received - premium paid to close - proportional open fees - close fees
+        realizedPL = proportionalOpenPremium - closeTotalPremium - proportionalOpenFees - closeFees;
       } else {
         // Bought to open, sold to close
-        // P&L = premium received on close - premium paid to open - open fees - close fees
-        realizedPL = closeTotalPremium - openTxn.totalPremium - openTxn.fees - closeFees;
+        // P&L = premium received on close - proportional premium paid to open - proportional open fees - close fees
+        realizedPL = closeTotalPremium - proportionalOpenPremium - proportionalOpenFees - closeFees;
       }
     }
     
@@ -404,7 +421,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       strikePrice: position.strikePrice,
       expirationDate: position.expirationDate,
       action: closingAction as OptionTransaction['action'],
-      contracts: position.contracts,
+      contracts: contractsClosing,
       premiumPerShare: closePremiumPerShare,
       totalPremium: closeTotalPremium,
       fees: closeFees,
@@ -416,18 +433,35 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       collateralRequired: openTxn.collateralRequired,
       collateralReleased: true,
       notes: closeType === 'expired'
-        ? 'Option expired worthless'
+        ? `${contractsClosing} contract(s) expired worthless`
         : closeType === 'assigned'
-          ? `Option was assigned - ${position.optionType === 'put' ? 'bought' : 'sold'} ${position.contracts * 100} shares of ${position.ticker} at $${position.strikePrice}`
-          : `Position closed at $${closePremiumPerShare}/share`
+          ? `${contractsClosing} contract(s) assigned - ${position.optionType === 'put' ? 'bought' : 'sold'} ${contractsClosing * 100} shares of ${position.ticker} at $${position.strikePrice}`
+          : `Closed ${contractsClosing} contract(s) at $${closePremiumPerShare}/share`
     };
     
     // Add the closing option transaction (this handles cash for the premium)
-    addOptionTransaction(closingOptionTxn);
+    const newTxnId = addOptionTransaction(closingOptionTxn);
+    
+    // Check for wash sale if this was a loss
+    if (realizedPL < 0 && closeType === 'closed') {
+      // Dynamically import and check for wash sale
+      import('../utils/positionCalculations').then(({ detectWashSales }) => {
+        const washSaleInfo = detectWashSales([...optionTransactions, { ...closingOptionTxn, id: newTxnId }], newTxnId);
+        
+        if (washSaleInfo && washSaleInfo.hasWashSale) {
+          alert(
+            `⚠️ Potential Wash Sale Detected\n\n` +
+            `You closed ${position.ticker} at a loss of $${Math.abs(realizedPL).toFixed(2)}.\n\n` +
+            `You have ${washSaleInfo.relatedTransactionIds.length} related transaction(s) within 30 days before/after this sale.\n\n` +
+            `This may trigger wash sale rules, which could disallow the loss deduction for tax purposes.`
+          );
+        }
+      });
+    }
     
     // If ASSIGNED, create the corresponding stock transaction
     if (closeType === 'assigned') {
-      const sharesCount = position.contracts * 100;
+      const sharesCount = contractsClosing * 100;
       const stockPrice = position.strikePrice;
       const stockTotal = sharesCount * stockPrice;
       
@@ -445,7 +479,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             totalAmount: stockTotal,
             fees: 0,
             date: today,
-            notes: `Assigned from ${position.strategy}: ${position.contracts} put contract(s) at $${position.strikePrice} strike`
+            notes: `Assigned from ${position.strategy}: ${contractsClosing} put contract(s) at $${position.strikePrice} strike`
           };
           addStockTransaction(stockTxn);
         }
@@ -463,7 +497,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             totalAmount: stockTotal,
             fees: 0,
             date: today,
-            notes: `Assigned from ${position.strategy}: ${position.contracts} call contract(s) at $${position.strikePrice} strike`
+            notes: `Assigned from ${position.strategy}: ${contractsClosing} call contract(s) at $${position.strikePrice} strike`
           };
           addStockTransaction(stockTxn);
         }

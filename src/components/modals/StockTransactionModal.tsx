@@ -75,8 +75,16 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
   }, [transaction, initialValues, selectedAccountId, isOpen]);
 
   const totalAmount = useMemo(() => {
-    return formData.shares * formData.pricePerShare;
-  }, [formData.shares, formData.pricePerShare]);
+    const baseAmount = formData.shares * formData.pricePerShare;
+    // For buy transactions, add fees to cost basis
+    // For sell transactions, subtract fees from proceeds
+    if (formData.action === 'buy' || formData.action === 'transfer-in') {
+      return baseAmount + formData.fees;
+    } else if (formData.action === 'sell' || formData.action === 'transfer-out') {
+      return baseAmount - formData.fees;
+    }
+    return baseAmount;
+  }, [formData.shares, formData.pricePerShare, formData.fees, formData.action]);
 
   const currentPosition = useMemo(() => {
     if (!formData.ticker || !formData.accountId) return null;

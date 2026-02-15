@@ -100,6 +100,13 @@ export function detectWashSales(
     return null;
   }
   
+  // Check if this transaction resulted in a loss
+  const realizedPL = targetTxn.realizedPL || 0;
+  if (realizedPL >= 0) {
+    // No loss, no wash sale
+    return null;
+  }
+  
   const targetDate = new Date(targetTxn.transactionDate);
   const washSalePeriodStart = new Date(targetDate);
   washSalePeriodStart.setDate(washSalePeriodStart.getDate() - 30);
@@ -126,7 +133,7 @@ export function detectWashSales(
   return {
     transactionId: targetTransactionId,
     ticker: targetTxn.ticker,
-    lossAmount: 0, // Would need position data to calculate actual loss
+    lossAmount: Math.abs(realizedPL),
     washSalePeriodStart,
     washSalePeriodEnd,
     hasWashSale,

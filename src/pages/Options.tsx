@@ -25,6 +25,7 @@ const Options: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [closingPositionId, setClosingPositionId] = useState<string | null>(null);
+  const [closingContracts, setClosingContracts] = useState('');
   const [closingPrice, setClosingPrice] = useState('');
   const [closingFees, setClosingFees] = useState('');
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
@@ -57,6 +58,15 @@ const Options: React.FC = () => {
   const closedPositions = filteredPositions.filter(p => p.status !== 'open');
 
   const handleClosePosition = (positionId: string, closeType: 'closed' | 'expired' | 'assigned') => {
+    const position = optionPositions.find(p => p.id === positionId);
+    if (!position) return;
+    
+    const contractsToClose = parseInt(closingContracts) || position.contracts;
+    if (contractsToClose <= 0 || contractsToClose > position.contracts) {
+      alert(`Please enter a valid number of contracts (1-${position.contracts})`);
+      return;
+    }
+    
     if (closeType === 'closed') {
       // For manual close, use the entered closing price and fees
       const price = parseFloat(closingPrice);
@@ -69,12 +79,13 @@ const Options: React.FC = () => {
         alert('Fees cannot be negative');
         return;
       }
-      closeOptionPosition(positionId, closeType, price, fees);
+      closeOptionPosition(positionId, closeType, price, fees, contractsToClose);
     } else {
       // For expired/assigned, no closing price needed
-      closeOptionPosition(positionId, closeType);
+      closeOptionPosition(positionId, closeType, undefined, undefined, contractsToClose);
     }
     setClosingPositionId(null);
+    setClosingContracts('');
     setClosingPrice('');
     setClosingFees('');
   };
@@ -794,6 +805,23 @@ const Options: React.FC = () => {
 
                 <div className="mb-4">
                   <label className="text-sm text-gray-400 block mb-2">
+                    Contracts to close *
+                  </label>
+                  <input
+                    type="number"
+                    value={closingContracts}
+                    onChange={(e) => setClosingContracts(e.target.value)}
+                    placeholder={position.contracts.toString()}
+                    step="1"
+                    min="1"
+                    max={position.contracts}
+                    className="w-full px-3 py-2 rounded-md border border-gray-600 bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Available: {position.contracts} contracts</p>
+                </div>
+
+                <div className="mb-4">
+                  <label className="text-sm text-gray-400 block mb-2">
                     Closing price per share (for manual close)
                   </label>
                   <input
@@ -846,6 +874,7 @@ const Options: React.FC = () => {
                   <button
                     onClick={() => {
                       setClosingPositionId(null);
+                      setClosingContracts('');
                       setClosingPrice('');
                       setClosingFees('');
                     }}

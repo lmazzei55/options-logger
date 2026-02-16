@@ -122,6 +122,32 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
     );
   }, [stockPositions, formData.ticker, formData.accountId]);
 
+  // When editing a closing transaction, calculate available contracts
+  // by adding back the contracts from the transaction being edited
+  const availableContractsForClosing = useMemo(() => {
+    if (!transaction || !formData.ticker || !formData.accountId) return 0;
+    
+    // Find the matching open position
+    const matchingPosition = optionPositions.find(
+      p => p.ticker === formData.ticker && 
+           p.accountId === formData.accountId &&
+           p.strategy === formData.strategy &&
+           p.strikePrice === formData.strikePrice &&
+           p.expirationDate === formData.expirationDate &&
+           p.status === 'open'
+    );
+    
+    if (!matchingPosition) return 0;
+    
+    // If editing a closing transaction, add back the original contracts
+    const isClosingAction = formData.action === 'buy-to-close' || formData.action === 'sell-to-close';
+    if (isClosingAction && transaction) {
+      return matchingPosition.contracts + transaction.contracts;
+    }
+    
+    return matchingPosition.contracts;
+  }, [transaction, formData, optionPositions]);
+
   const availableCash = useMemo(() => {
     if (!selectedAccount) return 0;
     const activeCollateral = optionPositions
@@ -170,6 +196,15 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
     }
     if (!hasSufficientShares) {
       newErrors.contracts = `Insufficient shares. You own ${stockPosition?.shares || 0} shares. Need ${formData.contracts * 100}.`;
+    }
+    
+    // Validate closing transactions have enough contracts
+    const isClosingAction = formData.action === 'buy-to-close' || formData.action === 'sell-to-close';
+    if (isClosingAction && transaction) {
+      // When editing, use availableContractsForClosing which includes the original transaction's contracts
+      if (formData.contracts > availableContractsForClosing) {
+        newErrors.contracts = `Insufficient contracts. Available: ${availableContractsForClosing} contracts.`;
+      }
     }
     if (!hasSufficientCash) {
       newErrors.strikePrice = `Insufficient cash. Available: $${availableCash.toFixed(2)}. Required: $${collateralRequired.toFixed(2)}.`;

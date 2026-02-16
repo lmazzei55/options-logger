@@ -16,6 +16,7 @@ import {
   generateId
 } from '../utils/calculations';
 import { generateMockData } from '../utils/mockData';
+import { detectStockWashSales, detectWashSales } from '../utils/positionCalculations';
 
 interface AppContextType {
   // Data
@@ -200,21 +201,30 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       return { ...acc, currentCash: acc.currentCash + cashChange };
     }));
     
-    // Check for wash sale if this is a sell transaction
-    if (transaction.action === 'sell') {
-      import('../utils/positionCalculations').then(({ detectStockWashSales }) => {
-        const allTransactions = [...stockTransactions, newTransaction];
-        const washSaleInfo = detectStockWashSales(allTransactions, newTransaction.id);
-        
-        if (washSaleInfo && washSaleInfo.hasWashSale) {
-          alert(
-            `⚠️ Potential Wash Sale Detected\n\n` +
-            `You sold ${transaction.ticker} at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
-            `You have ${washSaleInfo.relatedTransactionIds.length} related buy transaction(s) within 30 days before/after this sale.\n\n` +
-            `This may trigger wash sale rules, which could disallow the loss deduction for tax purposes.`
-          );
-        }
-      });
+    // Check for wash sale on ANY stock transaction (buy or sell)
+    // Wash sale: selling at a loss and buying same stock within 30 days
+    // Need to check both directions:
+    // - When selling: did I sell at a loss with buys nearby?
+    // - When buying: was there a recent sell at a loss?
+    const allStockTxns = [...stockTransactions, newTransaction];
+    const washSaleInfo = detectStockWashSales(allStockTxns, newTransaction.id);
+    
+    if (washSaleInfo && washSaleInfo.hasWashSale) {
+      if (transaction.action === 'buy') {
+        alert(
+          `⚠️ Potential Wash Sale Detected\n\n` +
+          `You are buying ${transaction.ticker} within 30 days of selling it at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
+          `This may trigger wash sale rules, which could disallow the loss deduction for tax purposes.\n\n` +
+          `The transaction has been added, but please consult a tax professional.`
+        );
+      } else if (transaction.action === 'sell') {
+        alert(
+          `⚠️ Potential Wash Sale Detected\n\n` +
+          `You sold ${transaction.ticker} at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
+          `You have ${washSaleInfo.relatedTransactionIds.length} related buy transaction(s) within 30 days.\n\n` +
+          `This may trigger wash sale rules, which could disallow the loss deduction for tax purposes.`
+        );
+      }
     }
     
     return newTransaction.id;
@@ -460,24 +470,18 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const newTxnId = addOptionTransaction(closingOptionTxn);
     
     // Check for wash sale if this was a loss
-    console.log('[Wash Sale Check] realizedPL:', realizedPL, 'closeType:', closeType);
-    if (realizedPL < 0 && closeType === 'closed') {
-      // Dynamically import and check for wash sale
-      import('../utils/positionCalculations').then(({ detectWashSales }) => {
-        const allTransactions = [...optionTransactions, { ...closingOptionTxn, id: newTxnId }];
-        console.log('[Wash Sale Check] Checking transaction:', newTxnId, 'Total transactions:', allTransactions.length);
-        const washSaleInfo = detectWashSales(allTransactions, newTxnId);
-        console.log('[Wash Sale Check] Result:', washSaleInfo);
-        
-        if (washSaleInfo && washSaleInfo.hasWashSale) {
-          alert(
-            `⚠️ Potential Wash Sale Detected\n\n` +
-            `You closed ${position.ticker} at a loss of $${Math.abs(realizedPL).toFixed(2)}.\n\n` +
-            `You have ${washSaleInfo.relatedTransactionIds.length} related transaction(s) within 30 days before/after this sale.\n\n` +
-            `This may trigger wash sale rules, which could disallow the loss deduction for tax purposes.`
-          );
-        }
-      });
+    if (realizedPL < 0) {
+      const allTransactions = [...optionTransactions, { ...closingOptionTxn, id: newTxnId }];
+      const washSaleInfo = detectWashSales(allTransactions, newTxnId);
+      
+      if (washSaleInfo && washSaleInfo.hasWashSale) {
+        alert(
+          `⚠️ Potential Wash Sale Detected\n\n` +
+          `You closed ${position.ticker} at a loss of $${Math.abs(realizedPL).toFixed(2)}.\n\n` +
+          `You have ${washSaleInfo.relatedTransactionIds.length} related transaction(s) within 30 days before/after this sale.\n\n` +
+          `This may trigger wash sale rules, which could disallow the loss deduction for tax purposes.`
+        );
+      }
     }
     
     // If ASSIGNED, create the corresponding stock transaction

@@ -632,14 +632,24 @@ const Options: React.FC = () => {
       {/* Additional Analytics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
-          <p className="text-sm text-gray-400 mb-2" title="Average realized profit/loss per closed trade">
-            Avg Return Per Trade
-          </p>
+          <div className="flex items-center gap-2 mb-2">
+            <p className="text-sm text-gray-400">
+              Avg Return Per Trade
+            </p>
+            <div className="group relative">
+              <svg className="w-4 h-4 text-gray-500 cursor-help" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              <div className="invisible group-hover:visible absolute left-0 top-6 w-64 p-2 bg-gray-800 text-xs text-gray-300 rounded shadow-lg z-10 border border-gray-700">
+                Average realized profit/loss per closed trade. Calculated as: Total Realized P/L ÷ Number of Closed Trades
+              </div>
+            </div>
+          </div>
           <p className="text-xl font-bold text-white">
             {formatCurrency(analytics.averageReturnPerTrade)}
           </p>
-          <p className="text-xs text-gray-500 mt-1">
-            Total P/L ÷ Closed Trades
+          <p className="text-sm text-gray-400 mt-1">
+            Per closed trade
           </p>
         </div>
 

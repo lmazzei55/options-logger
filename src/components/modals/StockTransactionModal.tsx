@@ -97,13 +97,15 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
 
   const canSell = useMemo(() => {
     if (formData.action !== 'sell' && formData.action !== 'transfer-out') return true;
-    if (!currentPosition) return false;
     
     // When editing a sell transaction, add back the original shares
-    let availableShares = currentPosition.shares;
+    let availableShares = currentPosition?.shares || 0;
     if (transaction && (transaction.action === 'sell' || transaction.action === 'transfer-out')) {
       availableShares += transaction.shares;
     }
+    
+    // If no position and not editing, can't sell
+    if (availableShares === 0 && !transaction) return false;
     
     return availableShares >= formData.shares;
   }, [formData.action, formData.shares, currentPosition, transaction]);
@@ -131,7 +133,10 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
       }
       
       if (transaction) {
-        newErrors.shares = `Insufficient shares. You can sell up to ${availableShares} shares (current position + original transaction).`;
+        // When editing, explain that we're replacing the original transaction
+        const originalShares = transaction.shares;
+        const currentShares = currentPosition?.shares || 0;
+        newErrors.shares = `Cannot sell ${formData.shares} shares. You originally sold ${originalShares} shares, and currently have ${currentShares} shares remaining. Maximum you can sell: ${availableShares} shares.`;
       } else {
         newErrors.shares = `Insufficient shares. You own ${availableShares} shares.`;
       }

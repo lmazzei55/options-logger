@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { StockTransaction } from '../../types';
 import { useAppContext } from '../../context/AppContext';
-import Modal from '../common/Modal';
+import { detectStockWashSales } from '../../utils/positionCalculations';
+import Modal from '../common/Modal';n/Modal';
 
 interface StockTransactionModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
     accounts,
     selectedAccountId,
     stockPositions,
+    stockTransactions,
     addStockTransaction,
     updateStockTransaction
   } = useAppContext();
@@ -129,7 +131,7 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
 
     const transactionData: Omit<StockTransaction, 'id'> = {
       accountId: formData.accountId,
-      date: new Date(formData.date).toISOString(),
+      date: formData.date,
       action: formData.action,
       ticker: formData.ticker.toUpperCase(),
       shares: formData.shares,
@@ -143,7 +145,20 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
     if (transaction) {
       updateStockTransaction(transaction.id, transactionData);
     } else {
-      addStockTransaction(transactionData);
+      const newTxnId = addStockTransaction(transactionData);
+      
+      // Check for wash sale
+      const allTransactions = [...stockTransactions, { ...transactionData, id: newTxnId }];
+      const washSaleInfo = detectStockWashSales(allTransactions, newTxnId);
+      
+      if (washSaleInfo && washSaleInfo.hasWashSale) {
+        alert(
+          `⚠️ Potential Wash Sale Detected\n\n` +
+          `This ${formData.action} transaction for ${formData.ticker} may trigger wash sale rules.\n\n` +
+          `Loss amount: $${washSaleInfo.lossAmount.toFixed(2)}\n\n` +
+          `There are related transactions within 30 days before/after this transaction that could disallow the loss deduction for tax purposes.`
+        );
+      }
     }
 
     onClose();

@@ -221,14 +221,14 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
 
     const transactionData: Omit<OptionTransaction, 'id'> = {
       accountId: formData.accountId,
-      transactionDate: new Date(formData.transactionDate).toISOString(),
+      transactionDate: formData.transactionDate,
       action: formData.action,
       ticker: formData.ticker.toUpperCase(),
       strategy: formData.strategy,
       optionType: formData.optionType,
       contracts: formData.contracts,
       strikePrice: formData.strikePrice,
-      expirationDate: new Date(formData.expirationDate).toISOString(),
+      expirationDate: formData.expirationDate,
       premiumPerShare: formData.premiumPerShare,
       totalPremium,
       fees: formData.fees,

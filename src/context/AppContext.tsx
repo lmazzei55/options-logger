@@ -387,6 +387,13 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const isSeller = openTxn.action === 'sell-to-open';
     const closingAction = isSeller ? 'buy-to-close' : 'sell-to-close';
     
+    console.log('=== CLOSE POSITION DEBUG ===');
+    console.log('Position:', position);
+    console.log('Open transaction:', openTxn);
+    console.log('Is seller?', isSeller);
+    console.log('Closing action:', closingAction);
+    console.log('Close type:', closeType);
+    
     // Determine how many contracts to close
     const contractsClosing = contractsToClose || position.contracts;
     if (contractsClosing > position.contracts) {
@@ -441,6 +448,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }
     
     // Create the closing option transaction
+    console.log('Creating closing transaction with action:', closingAction);
     const closingOptionTxn: Omit<OptionTransaction, 'id'> = {
       accountId: position.accountId,
       ticker: position.ticker,
@@ -467,7 +475,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     };
     
     // Add the closing option transaction (this handles cash for the premium)
+    console.log('Closing transaction object:', closingOptionTxn);
     const newTxnId = addOptionTransaction(closingOptionTxn);
+    console.log('New transaction ID:', newTxnId);
     
     // Check for wash sale if this was a loss
     if (realizedPL < 0) {

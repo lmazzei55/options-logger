@@ -285,9 +285,14 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
                     </option>
                   ))}
               </select>
-              {stockPositions.filter(p => p.accountId === formData.accountId && p.shares > 0).length === 0 && (
+              {!transaction && stockPositions.filter(p => p.accountId === formData.accountId && p.shares > 0).length === 0 && (
                 <p className="text-sm text-yellow-400 mt-1">
                   No stock positions available in this account to sell
+                </p>
+              )}
+              {transaction && stockPositions.filter(p => p.accountId === formData.accountId && p.shares > 0).length === 0 && (
+                <p className="text-sm text-gray-400 mt-1">
+                  Editing past transaction - position has been fully closed
                 </p>
               )}
             </>

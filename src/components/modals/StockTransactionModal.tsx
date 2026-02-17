@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { StockTransaction } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { detectStockWashSales } from '../../utils/positionCalculations';

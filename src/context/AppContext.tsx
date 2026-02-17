@@ -15,6 +15,7 @@ import {
   calculateOptionPositions,
   generateId
 } from '../utils/calculations';
+import { applyPremiumAdjustments } from '../utils/premiumAdjustedCalculations';
 import { generateMockData } from '../utils/mockData';
 import { detectStockWashSales, detectWashSales } from '../utils/positionCalculations';
 
@@ -89,6 +90,7 @@ const defaultSettings: AppSettings = {
   dateFormat: 'MM/DD/YYYY',
   showAllAccountsView: true,
   enablePriceFetching: false,
+  adjustCostBasisWithPremiums: false, // Default: off to preserve existing behavior
   chartPreferences: {
     defaultTimeRange: '6M',
     defaultChartType: 'line'
@@ -114,8 +116,13 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const isInitialMount = useRef(true);
   
   // Calculate positions whenever transactions change
-  const stockPositions = calculateStockPositions(stockTransactions, selectedAccountId || undefined);
+  const baseStockPositions = calculateStockPositions(stockTransactions, selectedAccountId || undefined);
   const optionPositions = calculateOptionPositions(optionTransactions, selectedAccountId || undefined);
+  
+  // Apply premium adjustments if enabled in settings
+  const stockPositions = settings.adjustCostBasisWithPremiums
+    ? applyPremiumAdjustments(baseStockPositions, optionTransactions)
+    : baseStockPositions;
   
   // Load data from localStorage on mount
   useEffect(() => {

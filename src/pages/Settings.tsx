@@ -84,6 +84,38 @@ const Settings: React.FC = () => {
         </div>
       )}
 
+      {/* Calculation Settings */}
+      <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
+        <h2 className="text-xl font-semibold text-white mb-4">Calculation Settings</h2>
+        <div className="space-y-4">
+          <div className="border border-gray-700 rounded-lg p-4">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.adjustCostBasisWithPremiums}
+                    onChange={(e) => updateSettings({ adjustCostBasisWithPremiums: e.target.checked })}
+                    className="w-5 h-5 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-200">Premium-Adjusted Cost Basis</span>
+                    <p className="text-xs text-gray-400 mt-1">
+                      When enabled, premiums collected from covered calls and cash-secured puts will reduce your stock cost basis.
+                      This shows your true "net cost" after collecting option income.
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+            <div className="mt-3 p-3 bg-blue-900/20 border border-blue-800 rounded text-xs text-blue-300">
+              <strong>Important:</strong> When this is enabled, option premiums are applied to stock cost basis and will NOT be counted as separate profit.
+              This prevents double-counting. Your total P&L remains the same, but it's calculated differently.
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Appearance Settings */}
       <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
         <h2 className="text-xl font-semibold text-white mb-4">Appearance</h2>

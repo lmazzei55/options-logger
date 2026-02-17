@@ -91,6 +91,9 @@ export interface StockPosition {
   shares: number;
   averageCostBasis: number;
   totalCostBasis: number;
+  premiumAdjustedCostBasis?: number; // Cost basis after applying option premiums
+  premiumAdjustedTotalCost?: number; // Total cost after applying option premiums
+  appliedPremiums?: number; // Total premiums applied to this position
   currentPrice?: number;
   marketValue?: number;
   unrealizedPL?: number;
@@ -152,6 +155,7 @@ export interface AppSettings {
   dateFormat: string;
   showAllAccountsView: boolean;
   enablePriceFetching: boolean;
+  adjustCostBasisWithPremiums: boolean; // When enabled, option premiums reduce stock cost basis
   chartPreferences: {
     defaultTimeRange: '1M' | '3M' | '6M' | '1Y' | 'ALL';
     defaultChartType: 'line' | 'bar' | 'candlestick';

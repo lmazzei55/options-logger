@@ -18,10 +18,11 @@ export const generateMockData = () => {
   // loadMockData() sets these directly (bypasses addTransaction cash logic).
   //
   // acc-1: Main Brokerage (initialCash = $50,000)
-  //   Stock buys: AAPL 50sh * $175.50 = -$8,775 | MSFT 30sh * $380 = -$11,400
-  //   Option premium: CC on AAPL expired +$350 -$1 fee = +$349
+  //   Stock buys: AAPL 50sh * $175.50 = -$8,775 | MSFT 30sh * $380 = -$11,400 | TSLA 25sh * $240 = -$6,000
+  //   Option premiums (covered calls on AAPL): +$350 + $275 + $180 = +$805 (3 CCs total)
   //   Option premium: CSP on MSFT open +$275 -$1 fee = +$274
-  //   currentCash = 50000 - 8775 - 11400 + 349 + 274 = $30,448
+  //   Option premium: CC on TSLA expired +$200 -$1 fee = +$199
+  //   currentCash = 50000 - 8775 - 11400 - 6000 + 805 + 274 + 199 = $25,103
   //
   // acc-2: Retirement IRA (initialCash = $100,000)
   //   Stock buys: SPY 50sh * $450 = -$22,500 | VTI 50sh * $220 = -$11,000
@@ -29,12 +30,14 @@ export const generateMockData = () => {
   //   currentCash = 100000 - 22500 - 11000 = $66,500
   //
   // acc-3: Options Trading (initialCash = $75,000)
+  //   Stock buy: NVDA 100sh * $200 = -$20,000
   //   Option premium: CSP AAPL open +$350 -$1 fee = +$349
   //   Option premium: CSP SPY closed: open +$1200 -$2 fee, close -$450 = net +$748
-  //   Option premium: CSP NVDA assigned: +$400 -$1 fee = +$399, then stock buy -$20,000
+  //   Option premium: CSP NVDA assigned: +$400 -$1 fee = +$399 (resulted in stock buy above)
   //   Option premium: Long call TSLA closed: open -$2500 -$2 fee, close +$3600 = net +$1098
   //   Option premium: CSP SPY open +$375 -$1 fee = +$374
-  //   currentCash = 75000 + 349 + 748 + 399 - 20000 + 1098 + 374 = $57,968
+  //   Option premium: CC on NVDA open +$500 -$1 fee = +$499
+  //   currentCash = 75000 - 20000 + 349 + 748 + 399 + 1098 + 374 + 499 = $58,467
 
   const accounts: InvestmentAccount[] = [
     {
@@ -44,7 +47,7 @@ export const generateMockData = () => {
       broker: 'Fidelity',
       accountNumber: '1234',
       initialCash: 50000,
-      currentCash: 30448,
+      currentCash: 25103,
       currency: 'USD',
       isActive: true,
       createdDate: sixMonthsAgo.toISOString().split('T')[0],
@@ -70,7 +73,7 @@ export const generateMockData = () => {
       broker: 'Tastyworks',
       accountNumber: '9012',
       initialCash: 75000,
-      currentCash: 57968,
+      currentCash: 58467,
       currency: 'USD',
       isActive: true,
       createdDate: sixMonthsAgo.toISOString().split('T')[0],
@@ -111,6 +114,20 @@ export const generateMockData = () => {
       fees: 0,
       date: new Date(now.getTime() - 120 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       notes: 'Tech diversification'
+    },
+    // acc-1: TSLA position - 25 shares @ $240 (for covered calls demo)
+    {
+      id: generateId(),
+      accountId: 'acc-1',
+      ticker: 'TSLA',
+      companyName: 'Tesla Inc.',
+      action: 'buy',
+      shares: 25,
+      pricePerShare: 240.00,
+      totalAmount: 6000,
+      fees: 0,
+      date: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      notes: 'Position for covered call strategy'
     },
     // acc-2: SPY position - 50 shares @ $450
     {
@@ -235,7 +252,7 @@ export const generateMockData = () => {
 
     // --- CLOSED POSITIONS ---
 
-    // acc-1: Expired worthless covered call on AAPL
+    // acc-1: Expired worthless covered call on AAPL (#1)
     // Premium: 1 * 100 * $3.50 = $350
     // P&L: $350 - $1 fee = $349
     {
@@ -256,6 +273,97 @@ export const generateMockData = () => {
       closeDate: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       realizedPL: 349,
       notes: 'Expired worthless - kept full premium'
+    },
+
+    // acc-1: Expired worthless covered call on AAPL (#2)
+    // Premium: 1 * 100 * $2.75 = $275
+    // P&L: $275 - $1 fee = $274
+    {
+      id: generateId(),
+      accountId: 'acc-1',
+      ticker: 'AAPL',
+      strategy: 'covered-call',
+      optionType: 'call',
+      action: 'sell-to-open',
+      contracts: 1,
+      strikePrice: 180.00,
+      premiumPerShare: 2.75,
+      totalPremium: 275,
+      fees: 1,
+      expirationDate: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      transactionDate: new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      status: 'expired',
+      closeDate: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      realizedPL: 274,
+      notes: 'Second covered call - expired worthless'
+    },
+
+    // acc-1: Closed covered call on AAPL (#3 - bought back early)
+    // Premium collected: 1 * 100 * $2.00 = $200
+    // Bought back at: 1 * 100 * $0.20 = $20
+    // P&L: $200 - $20 - $1 fee = $179
+    {
+      id: generateId(),
+      accountId: 'acc-1',
+      ticker: 'AAPL',
+      strategy: 'covered-call',
+      optionType: 'call',
+      action: 'sell-to-open',
+      contracts: 1,
+      strikePrice: 190.00,
+      premiumPerShare: 2.00,
+      totalPremium: 200,
+      fees: 1,
+      expirationDate: new Date(now.getTime() - 25 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      transactionDate: new Date(now.getTime() - 55 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      status: 'closed',
+      closeDate: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      closePrice: 0.20,
+      realizedPL: 179,
+      notes: 'Bought back early at 90% profit'
+    },
+
+    // acc-1: Expired covered call on TSLA
+    // Premium: 1 * 100 * $2.00 = $200 (only 25 shares, but selling 1 contract)
+    // P&L: $200 - $1 fee = $199
+    {
+      id: generateId(),
+      accountId: 'acc-1',
+      ticker: 'TSLA',
+      strategy: 'covered-call',
+      optionType: 'call',
+      action: 'sell-to-open',
+      contracts: 1,
+      strikePrice: 260.00,
+      premiumPerShare: 2.00,
+      totalPremium: 200,
+      fees: 1,
+      expirationDate: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      transactionDate: new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      status: 'expired',
+      closeDate: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      realizedPL: 199,
+      notes: 'Expired worthless - kept premium'
+    },
+
+    // acc-3: Open covered call on NVDA (1 contract, $220 strike, expiring in 20 days)
+    // Premium: 1 * 100 * $5.00 = $500
+    {
+      id: generateId(),
+      accountId: 'acc-3',
+      ticker: 'NVDA',
+      strategy: 'covered-call',
+      optionType: 'call',
+      action: 'sell-to-open',
+      contracts: 1,
+      strikePrice: 220.00,
+      premiumPerShare: 5.00,
+      totalPremium: 500,
+      fees: 1,
+      expirationDate: new Date(now.getTime() + 20 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      transactionDate: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      status: 'open',
+      notes: 'Covered call on assigned NVDA position'
     },
 
     // acc-3: Closed CSP on SPY (bought to close at ~62% profit)
@@ -289,6 +397,7 @@ export const generateMockData = () => {
     // Premium: 1 * 100 * $4.00 = $400
     // P&L on option: $400 - $1 fee = $399 (premium kept)
     // Stock acquired: 100 shares at $200 = $20,000 (deducted from cash separately)
+    // NOTE: With premium adjustment ON, effective cost basis = $196/share ($200 - $4 premium)
     {
       id: generateId(),
       accountId: 'acc-3',
@@ -309,7 +418,7 @@ export const generateMockData = () => {
       collateralRequired: 20000,
       collateralReleased: true,
       linkedStockTransactionId: nvdaAssignmentId,
-      notes: 'Assigned - acquired 100 shares of NVDA at $200'
+      notes: 'Assigned - acquired 100 shares of NVDA at $200. Premium reduces effective cost to $196/share.'
     },
 
     // acc-3: Closed long call on TSLA (profitable)

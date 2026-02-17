@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { formatDateLocal } from '../utils/dateUtils';
+import { formatDateLocal, formatDateLocalWithOptions } from '../utils/dateUtils';
 import { useAppContext } from '../context/AppContext';
 import {
   calculatePortfolioSummary,

@@ -11,7 +11,8 @@ const Stocks: React.FC = () => {
     stockTransactions,
     selectedAccountId,
     accounts,
-    deleteStockTransaction
+    deleteStockTransaction,
+    settings
   } = useAppContext();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -222,12 +223,21 @@ const Stocks: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-white">
-                        ${position.averageCostBasis.toFixed(2)}
+                        ${(settings.adjustCostBasisWithPremiums && position.premiumAdjustedCostBasis !== undefined 
+                          ? position.premiumAdjustedCostBasis 
+                          : position.averageCostBasis).toFixed(2)}
                       </div>
+                      {settings.adjustCostBasisWithPremiums && position.appliedPremiums && position.appliedPremiums > 0 && (
+                        <div className="text-xs text-green-400" title={`Original: $${position.averageCostBasis.toFixed(2)} - Premium: $${position.appliedPremiums.toFixed(2)}`}>
+                          ↓ ${position.appliedPremiums.toFixed(2)} premium
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-white">
-                        ${position.totalCostBasis.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ${(settings.adjustCostBasisWithPremiums && position.premiumAdjustedTotalCost !== undefined 
+                          ? position.premiumAdjustedTotalCost 
+                          : position.totalCostBasis).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

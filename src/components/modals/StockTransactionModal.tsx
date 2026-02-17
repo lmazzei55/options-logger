@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { StockTransaction } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { detectStockWashSales } from '../../utils/positionCalculations';
-import Modal from '../common/Modal';n/Modal';
+import Modal from '../common/Modal';
 
 interface StockTransactionModalProps {
   isOpen: boolean;

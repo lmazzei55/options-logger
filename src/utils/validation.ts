@@ -289,13 +289,19 @@ export const validateOptionTransaction = (
 export const generateStockTransactionFingerprint = (
   transaction: Omit<StockTransaction, 'id'>
 ): string => {
-  return `${transaction.accountId}|${transaction.ticker}|${transaction.action}|${transaction.date}|${transaction.shares}|${transaction.pricePerShare}|${transaction.totalAmount}`;
+  // Round prices to 2 decimal places to handle minor rounding differences
+  const roundedPrice = Math.round(transaction.pricePerShare * 100) / 100;
+  const roundedTotal = Math.round(transaction.totalAmount * 100) / 100;
+  return `${transaction.accountId}|${transaction.ticker}|${transaction.action}|${transaction.date}|${transaction.shares}|${roundedPrice}|${roundedTotal}`;
 };
 
 export const generateOptionTransactionFingerprint = (
   transaction: Omit<OptionTransaction, 'id'>
 ): string => {
-  return `${transaction.accountId}|${transaction.ticker}|${transaction.optionType}|${transaction.action}|${transaction.transactionDate}|${transaction.contracts}|${transaction.strikePrice}|${transaction.expirationDate}|${transaction.premiumPerShare}`;
+  // Round prices to 2 decimal places to handle minor rounding differences
+  const roundedPremium = Math.round(transaction.premiumPerShare * 100) / 100;
+  const roundedStrike = Math.round(transaction.strikePrice * 100) / 100;
+  return `${transaction.accountId}|${transaction.ticker}|${transaction.optionType}|${transaction.action}|${transaction.transactionDate}|${transaction.contracts}|${roundedStrike}|${transaction.expirationDate}|${roundedPremium}`;
 };
 
 // Check for duplicate transactions

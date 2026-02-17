@@ -94,14 +94,21 @@ export class SchwabMonthlyParser implements BrokerParser {
           
           i++;
           
-          // Try to parse as option transaction
+          // Try to parse as option transaction first
           const option = this.parseOptionTransaction(lines, i, ticker, date, currentCategory, currentAction, year, tickerExpiration);
           if (option) {
             optionTransactions.push(option.transaction);
             i = option.nextIndex;
           } else {
-            // If parsing failed, skip ahead to avoid infinite loop
-            break;
+            // Try to parse as stock transaction
+            const stock = this.parseStockTransaction(lines, i, ticker, date, currentCategory, currentAction, year);
+            if (stock) {
+              transactions.push(stock.transaction);
+              i = stock.nextIndex;
+            } else {
+              // If both parsing attempts failed, skip this ticker
+              i++;
+            }
           }
         }
       }
@@ -288,6 +295,89 @@ export class SchwabMonthlyParser implements BrokerParser {
         strikePrice,
         premiumPerShare,
         expirationDate,
+        fees,
+        notes: `Imported from Schwab monthly statement`
+      },
+      nextIndex: i
+    };
+  }
+
+  private parseStockTransaction(
+    lines: string[],
+    startIndex: number,
+    ticker: string,
+    date: string,
+    category: string,
+    action: string,
+    year: string
+  ): { transaction: ParsedTransaction; nextIndex: number } | null {
+    // Expected structure after ticker:
+    // - Company name (e.g., "Apple Inc." or "APPLE INC")
+    // - Quantity (e.g., "100" or "100.0000")
+    // - Price (e.g., "$150.00" or "150.00")
+    // - Amount (e.g., "$15,000.00" or "15000.00")
+    // - Optional: Fees line
+    
+    let i = startIndex;
+    
+    // Skip company name line (may be multiple words)
+    if (i >= lines.length) return null;
+    // Company name typically doesn't start with a number or $
+    if (!/^[\d$]/.test(lines[i])) {
+      i++;
+    }
+    
+    // Parse quantity
+    if (i >= lines.length) return null;
+    const quantityLine = lines[i];
+    const quantityMatch = quantityLine.match(/^([\d,.]+)$/);
+    if (!quantityMatch) return null;
+    const shares = parseFloat(quantityMatch[1].replace(/,/g, ''));
+    i++;
+    
+    // Parse price per share
+    if (i >= lines.length) return null;
+    const priceLine = lines[i];
+    const priceMatch = priceLine.match(/\$?([\d,.]+)/);
+    if (!priceMatch) return null;
+    const pricePerShare = parseFloat(priceMatch[1].replace(/,/g, ''));
+    i++;
+    
+    // Parse total amount
+    if (i >= lines.length) return null;
+    const amountLine = lines[i];
+    const amountMatch = amountLine.match(/\$?([\d,.]+)/);
+    if (!amountMatch) return null;
+    const totalAmount = parseFloat(amountMatch[1].replace(/,/g, ''));
+    i++;
+    
+    // Check for fees
+    let fees = 0;
+    if (i < lines.length && /Fees?\s*&?\s*Commissions?/.test(lines[i])) {
+      i++;
+      if (i < lines.length) {
+        const feesMatch = lines[i].match(/\$?([\d,.]+)/);
+        if (feesMatch) {
+          fees = parseFloat(feesMatch[1].replace(/,/g, ''));
+          i++;
+        }
+      }
+    }
+    
+    // Determine action
+    const stockAction: 'buy' | 'sell' = category === 'Purchase' ? 'buy' : 'sell';
+    
+    // Parse full date
+    const fullDate = this.parseDate(`${date}/${year}`);
+    
+    return {
+      transaction: {
+        date: fullDate,
+        ticker,
+        action: stockAction,
+        shares,
+        pricePerShare,
+        totalAmount,
         fees,
         notes: `Imported from Schwab monthly statement`
       },

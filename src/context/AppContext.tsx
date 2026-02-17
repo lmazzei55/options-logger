@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type {
   InvestmentAccount,
@@ -16,6 +16,7 @@ import {
   generateId
 } from '../utils/calculations';
 import { generateMockData } from '../utils/mockData';
+import { detectStockWashSales, detectWashSales } from '../utils/positionCalculations';
 
 interface AppContextType {
   // Data
@@ -45,7 +46,7 @@ interface AppContextType {
   deleteStockTransaction: (id: string) => void;
   
   // Option transaction actions
-  addOptionTransaction: (transaction: Omit<OptionTransaction, 'id'>) => void;
+  addOptionTransaction: (transaction: Omit<OptionTransaction, 'id'>) => string;
   updateOptionTransaction: (id: string, transaction: Partial<OptionTransaction>) => void;
   deleteOptionTransaction: (id: string) => void;
   
@@ -54,7 +55,8 @@ interface AppContextType {
     positionId: string,
     closeType: 'closed' | 'expired' | 'assigned',
     closePrice?: number,
-    fees?: number
+    fees?: number,
+    contractsToClose?: number
   ) => void;
   
   // Tag actions
@@ -109,6 +111,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [templates, setTemplates] = useState<TransactionTemplate[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const isInitialMount = useRef(true);
   
   // Calculate positions whenever transactions change
   const stockPositions = calculateStockPositions(stockTransactions, selectedAccountId || undefined);
@@ -133,8 +136,13 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }
   }, []);
   
-  // Save data to localStorage whenever it changes
+  // Save data to localStorage whenever it changes (skip initial render)
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    
     const dataToSave = {
       accounts,
       stockTransactions,
@@ -144,7 +152,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       settings,
       selectedAccountId
     };
+    console.log('Saving to localStorage:', dataToSave);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+    console.log('Data saved successfully');
   }, [accounts, stockTransactions, optionTransactions, tags, templates, settings, selectedAccountId]);
   
   // ==========================================
@@ -199,8 +209,34 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       return { ...acc, currentCash: acc.currentCash + cashChange };
     }));
     
+    // Check for wash sale on ANY stock transaction (buy or sell)
+    // Wash sale: selling at a loss and buying same stock within 30 days
+    // Need to check both directions:
+    // - When selling: did I sell at a loss with buys nearby?
+    // - When buying: was there a recent sell at a loss?
+    const allStockTxns = [...stockTransactions, newTransaction];
+    const washSaleInfo = detectStockWashSales(allStockTxns, newTransaction.id);
+    
+    if (washSaleInfo && washSaleInfo.hasWashSale) {
+      if (transaction.action === 'buy') {
+        alert(
+          `⚠️ Potential Wash Sale Detected\n\n` +
+          `You are buying ${transaction.ticker} within 30 days of selling it at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
+          `This may trigger wash sale rules, which could disallow the loss deduction for tax purposes.\n\n` +
+          `The transaction has been added, but please consult a tax professional.`
+        );
+      } else if (transaction.action === 'sell') {
+        alert(
+          `⚠️ Potential Wash Sale Detected\n\n` +
+          `You sold ${transaction.ticker} at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
+          `You have ${washSaleInfo.relatedTransactionIds.length} related buy transaction(s) within 30 days.\n\n` +
+          `This may trigger wash sale rules, which could disallow the loss deduction for tax purposes.`
+        );
+      }
+    }
+    
     return newTransaction.id;
-  }, []);
+  }, [stockTransactions]);
   
   const updateStockTransaction = (id: string, updates: Partial<StockTransaction>) => {
     setStockTransactions(prev => {
@@ -252,10 +288,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   // OPTION TRANSACTION ACTIONS
   // ==========================================
   
-  const addOptionTransaction = useCallback((transaction: Omit<OptionTransaction, 'id'>) => {
+  const addOptionTransaction = useCallback((transaction: Omit<OptionTransaction, 'id'>): string => {
+    const newId = generateId();
     const newTransaction: OptionTransaction = {
       ...transaction,
-      id: generateId()
+      id: newId
     };
     setOptionTransactions(prev => [...prev, newTransaction]);
     
@@ -283,6 +320,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       
       return { ...acc, currentCash: acc.currentCash + cashChange };
     }));
+    
+    return newId;
   }, []);
   
   const updateOptionTransaction = (id: string, updates: Partial<OptionTransaction>) => {
@@ -335,7 +374,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     positionId: string,
     closeType: 'closed' | 'expired' | 'assigned',
     closePrice?: number, // price per share for buy-to-close / sell-to-close
-    fees?: number // fees for closing transaction
+    fees?: number, // fees for closing transaction
+    contractsToClose?: number // number of contracts to close (for partial close)
   ) => {
     // We need current state, so we use functional updates
     // First, find the position and original transaction
@@ -355,48 +395,68 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const isSeller = openTxn.action === 'sell-to-open';
     const closingAction = isSeller ? 'buy-to-close' : 'sell-to-close';
     
+    console.log('=== CLOSE POSITION DEBUG ===');
+    console.log('Position:', position);
+    console.log('Open transaction:', openTxn);
+    console.log('Is seller?', isSeller);
+    console.log('Closing action:', closingAction);
+    console.log('Close type:', closeType);
+    
+    // Determine how many contracts to close
+    const contractsClosing = contractsToClose || position.contracts;
+    if (contractsClosing > position.contracts) {
+      console.error('Cannot close more contracts than available');
+      return;
+    }
+    
     // Calculate realized P&L
     const closeFees = fees || 0;
     let realizedPL = 0;
     let closePremiumPerShare = closePrice || 0;
-    let closeTotalPremium = closePremiumPerShare * position.contracts * 100;
+    let closeTotalPremium = closePremiumPerShare * contractsClosing * 100;
+    
+    // Calculate proportional open premium and fees
+    const proportionClosing = contractsClosing / openTxn.contracts;
+    const proportionalOpenPremium = openTxn.totalPremium * proportionClosing;
+    const proportionalOpenFees = openTxn.fees * proportionClosing;
     
     if (closeType === 'expired') {
       // Option expired worthless
       closePremiumPerShare = 0;
       closeTotalPremium = 0;
       if (isSeller) {
-        // Seller keeps full premium
-        realizedPL = openTxn.totalPremium - openTxn.fees;
+        // Seller keeps proportional premium
+        realizedPL = proportionalOpenPremium - proportionalOpenFees;
       } else {
-        // Buyer loses full premium
-        realizedPL = -(openTxn.totalPremium + openTxn.fees);
+        // Buyer loses proportional premium
+        realizedPL = -(proportionalOpenPremium + proportionalOpenFees);
       }
     } else if (closeType === 'assigned') {
       // Option was assigned - premium already received/paid, now stock changes hands
       closePremiumPerShare = 0;
       closeTotalPremium = 0;
       if (isSeller) {
-        // Seller keeps the premium received at open
-        realizedPL = openTxn.totalPremium - openTxn.fees;
+        // Seller keeps the proportional premium received at open
+        realizedPL = proportionalOpenPremium - proportionalOpenFees;
       } else {
-        // Buyer paid premium to open, now exercises
-        realizedPL = -(openTxn.totalPremium + openTxn.fees);
+        // Buyer paid proportional premium to open, now exercises
+        realizedPL = -(proportionalOpenPremium + proportionalOpenFees);
       }
     } else {
       // Closed manually (bought/sold to close)
       if (isSeller) {
         // Sold to open, bought to close
-        // P&L = premium received - premium paid to close - open fees - close fees
-        realizedPL = openTxn.totalPremium - closeTotalPremium - openTxn.fees - closeFees;
+        // P&L = proportional premium received - premium paid to close - proportional open fees - close fees
+        realizedPL = proportionalOpenPremium - closeTotalPremium - proportionalOpenFees - closeFees;
       } else {
         // Bought to open, sold to close
-        // P&L = premium received on close - premium paid to open - open fees - close fees
-        realizedPL = closeTotalPremium - openTxn.totalPremium - openTxn.fees - closeFees;
+        // P&L = premium received on close - proportional premium paid to open - proportional open fees - close fees
+        realizedPL = closeTotalPremium - proportionalOpenPremium - proportionalOpenFees - closeFees;
       }
     }
     
     // Create the closing option transaction
+    console.log('Creating closing transaction with action:', closingAction);
     const closingOptionTxn: Omit<OptionTransaction, 'id'> = {
       accountId: position.accountId,
       ticker: position.ticker,
@@ -404,7 +464,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       strikePrice: position.strikePrice,
       expirationDate: position.expirationDate,
       action: closingAction as OptionTransaction['action'],
-      contracts: position.contracts,
+      contracts: contractsClosing,
       premiumPerShare: closePremiumPerShare,
       totalPremium: closeTotalPremium,
       fees: closeFees,
@@ -416,18 +476,35 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       collateralRequired: openTxn.collateralRequired,
       collateralReleased: true,
       notes: closeType === 'expired'
-        ? 'Option expired worthless'
+        ? `${contractsClosing} contract(s) expired worthless`
         : closeType === 'assigned'
-          ? `Option was assigned - ${position.optionType === 'put' ? 'bought' : 'sold'} ${position.contracts * 100} shares of ${position.ticker} at $${position.strikePrice}`
-          : `Position closed at $${closePremiumPerShare}/share`
+          ? `${contractsClosing} contract(s) assigned - ${position.optionType === 'put' ? 'bought' : 'sold'} ${contractsClosing * 100} shares of ${position.ticker} at $${position.strikePrice}`
+          : `Closed ${contractsClosing} contract(s) at $${closePremiumPerShare}/share`
     };
     
     // Add the closing option transaction (this handles cash for the premium)
-    addOptionTransaction(closingOptionTxn);
+    console.log('Closing transaction object:', closingOptionTxn);
+    const newTxnId = addOptionTransaction(closingOptionTxn);
+    console.log('New transaction ID:', newTxnId);
+    
+    // Check for wash sale if this was a loss
+    if (realizedPL < 0) {
+      const allTransactions = [...optionTransactions, { ...closingOptionTxn, id: newTxnId }];
+      const washSaleInfo = detectWashSales(allTransactions, newTxnId);
+      
+      if (washSaleInfo && washSaleInfo.hasWashSale) {
+        alert(
+          `⚠️ Potential Wash Sale Detected\n\n` +
+          `You closed ${position.ticker} at a loss of $${Math.abs(realizedPL).toFixed(2)}.\n\n` +
+          `You have ${washSaleInfo.relatedTransactionIds.length} related transaction(s) within 30 days before/after this sale.\n\n` +
+          `This may trigger wash sale rules, which could disallow the loss deduction for tax purposes.`
+        );
+      }
+    }
     
     // If ASSIGNED, create the corresponding stock transaction
     if (closeType === 'assigned') {
-      const sharesCount = position.contracts * 100;
+      const sharesCount = contractsClosing * 100;
       const stockPrice = position.strikePrice;
       const stockTotal = sharesCount * stockPrice;
       
@@ -445,7 +522,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             totalAmount: stockTotal,
             fees: 0,
             date: today,
-            notes: `Assigned from ${position.strategy}: ${position.contracts} put contract(s) at $${position.strikePrice} strike`
+            notes: `Assigned from ${position.strategy}: ${contractsClosing} put contract(s) at $${position.strikePrice} strike`
           };
           addStockTransaction(stockTxn);
         }
@@ -463,7 +540,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             totalAmount: stockTotal,
             fees: 0,
             date: today,
-            notes: `Assigned from ${position.strategy}: ${position.contracts} call contract(s) at $${position.strikePrice} strike`
+            notes: `Assigned from ${position.strategy}: ${contractsClosing} call contract(s) at $${position.strikePrice} strike`
           };
           addStockTransaction(stockTxn);
         }

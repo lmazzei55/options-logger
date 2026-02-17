@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { StockTransaction } from '../../types';
 import { useAppContext } from '../../context/AppContext';
+import { detectStockWashSales } from '../../utils/positionCalculations';
 import Modal from '../common/Modal';
 
 interface StockTransactionModalProps {
@@ -25,6 +26,7 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
     accounts,
     selectedAccountId,
     stockPositions,
+    stockTransactions,
     addStockTransaction,
     updateStockTransaction
   } = useAppContext();
@@ -48,7 +50,7 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
     if (transaction) {
       setFormData({
         accountId: transaction.accountId,
-        date: transaction.date.split('T')[0],
+        date: transaction.date.includes('T') ? transaction.date.split('T')[0] : transaction.date,
         action: transaction.action,
         ticker: transaction.ticker,
         shares: transaction.shares,
@@ -75,8 +77,16 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
   }, [transaction, initialValues, selectedAccountId, isOpen]);
 
   const totalAmount = useMemo(() => {
-    return formData.shares * formData.pricePerShare;
-  }, [formData.shares, formData.pricePerShare]);
+    const baseAmount = formData.shares * formData.pricePerShare;
+    // For buy transactions, add fees to cost basis
+    // For sell transactions, subtract fees from proceeds
+    if (formData.action === 'buy' || formData.action === 'transfer-in') {
+      return baseAmount + formData.fees;
+    } else if (formData.action === 'sell' || formData.action === 'transfer-out') {
+      return baseAmount - formData.fees;
+    }
+    return baseAmount;
+  }, [formData.shares, formData.pricePerShare, formData.fees, formData.action]);
 
   const currentPosition = useMemo(() => {
     if (!formData.ticker || !formData.accountId) return null;
@@ -87,9 +97,18 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
 
   const canSell = useMemo(() => {
     if (formData.action !== 'sell' && formData.action !== 'transfer-out') return true;
-    if (!currentPosition) return false;
-    return currentPosition.shares >= formData.shares;
-  }, [formData.action, formData.shares, currentPosition]);
+    
+    // When editing a sell transaction, add back the original shares
+    let availableShares = currentPosition?.shares || 0;
+    if (transaction && (transaction.action === 'sell' || transaction.action === 'transfer-out')) {
+      availableShares += transaction.shares;
+    }
+    
+    // If no position and not editing, can't sell
+    if (availableShares === 0 && !transaction) return false;
+    
+    return availableShares >= formData.shares;
+  }, [formData.action, formData.shares, currentPosition, transaction]);
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -111,7 +130,20 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
       newErrors.pricePerShare = 'Price must be greater than 0';
     }
     if (!canSell) {
-      newErrors.shares = `Insufficient shares. You own ${currentPosition?.shares || 0} shares.`;
+      // Calculate available shares for the error message
+      let availableShares = currentPosition?.shares || 0;
+      if (transaction && (transaction.action === 'sell' || transaction.action === 'transfer-out')) {
+        availableShares += transaction.shares;
+      }
+      
+      if (transaction) {
+        // When editing, explain that we're replacing the original transaction
+        const originalShares = transaction.shares;
+        const currentShares = currentPosition?.shares || 0;
+        newErrors.shares = `Cannot sell ${formData.shares} shares. You originally sold ${originalShares} shares, and currently have ${currentShares} shares remaining. Maximum you can sell: ${availableShares} shares.`;
+      } else {
+        newErrors.shares = `Insufficient shares. You own ${availableShares} shares.`;
+      }
     }
     
     // Validate date not in future
@@ -134,7 +166,7 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
 
     const transactionData: Omit<StockTransaction, 'id'> = {
       accountId: formData.accountId,
-      date: new Date(formData.date).toISOString(),
+      date: formData.date,
       action: formData.action,
       ticker: formData.ticker.toUpperCase(),
       shares: formData.shares,
@@ -148,7 +180,26 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
     if (transaction) {
       updateStockTransaction(transaction.id, transactionData);
     } else {
-      addStockTransaction(transactionData);
+      const newTxnId = addStockTransaction(transactionData);
+      
+      // Check for wash sale
+      const allTransactions = [...stockTransactions, { ...transactionData, id: newTxnId }];
+      const washSaleInfo = detectStockWashSales(allTransactions, newTxnId);
+      
+      if (washSaleInfo && washSaleInfo.hasWashSale) {
+        const isBuy = formData.action === 'buy';
+        const message = isBuy
+          ? `⚠️ Potential Wash Sale Detected\n\n` +
+            `You are buying ${formData.ticker} within 30 days of selling it at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
+            `This may disallow the loss deduction for tax purposes under IRS wash sale rules.\n\n` +
+            `You have ${washSaleInfo.relatedTransactionIds.length} related sell transaction(s) within 30 days.`
+          : `⚠️ Potential Wash Sale Detected\n\n` +
+            `You sold ${formData.ticker} at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
+            `You have ${washSaleInfo.relatedTransactionIds.length} related buy transaction(s) within 30 days before/after this sale.\n\n` +
+            `This may disallow the loss deduction for tax purposes under IRS wash sale rules.`;
+        
+        alert(message);
+      }
     }
 
     onClose();
@@ -250,9 +301,14 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
                     </option>
                   ))}
               </select>
-              {stockPositions.filter(p => p.accountId === formData.accountId && p.shares > 0).length === 0 && (
+              {!transaction && stockPositions.filter(p => p.accountId === formData.accountId && p.shares > 0).length === 0 && (
                 <p className="text-sm text-yellow-400 mt-1">
                   No stock positions available in this account to sell
+                </p>
+              )}
+              {transaction && stockPositions.filter(p => p.accountId === formData.accountId && p.shares > 0).length === 0 && (
+                <p className="text-sm text-gray-400 mt-1">
+                  Editing past transaction - position has been fully closed
                 </p>
               )}
             </>

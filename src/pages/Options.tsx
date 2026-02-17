@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatDateLocal } from '../utils/dateUtils';
 import { useAppContext } from '../context/AppContext';
 import {
   formatCurrency,
@@ -25,6 +26,7 @@ const Options: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [closingPositionId, setClosingPositionId] = useState<string | null>(null);
+  const [closingContracts, setClosingContracts] = useState('');
   const [closingPrice, setClosingPrice] = useState('');
   const [closingFees, setClosingFees] = useState('');
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
@@ -57,6 +59,15 @@ const Options: React.FC = () => {
   const closedPositions = filteredPositions.filter(p => p.status !== 'open');
 
   const handleClosePosition = (positionId: string, closeType: 'closed' | 'expired' | 'assigned') => {
+    const position = optionPositions.find(p => p.id === positionId);
+    if (!position) return;
+    
+    const contractsToClose = parseInt(closingContracts) || position.contracts;
+    if (contractsToClose <= 0 || contractsToClose > position.contracts) {
+      alert(`Please enter a valid number of contracts (1-${position.contracts})`);
+      return;
+    }
+    
     if (closeType === 'closed') {
       // For manual close, use the entered closing price and fees
       const price = parseFloat(closingPrice);
@@ -69,12 +80,13 @@ const Options: React.FC = () => {
         alert('Fees cannot be negative');
         return;
       }
-      closeOptionPosition(positionId, closeType, price, fees);
+      closeOptionPosition(positionId, closeType, price, fees, contractsToClose);
     } else {
       // For expired/assigned, no closing price needed
-      closeOptionPosition(positionId, closeType);
+      closeOptionPosition(positionId, closeType, undefined, undefined, contractsToClose);
     }
     setClosingPositionId(null);
+    setClosingContracts('');
     setClosingPrice('');
     setClosingFees('');
   };
@@ -334,7 +346,7 @@ const Options: React.FC = () => {
           <div>
             <p className="text-xs text-gray-400">Expiration</p>
             <p className="text-sm font-semibold text-white">
-              {new Date(position.expirationDate).toLocaleDateString()}
+              {formatDateLocal(position.expirationDate)}
             </p>
           </div>
           <div>
@@ -470,7 +482,7 @@ const Options: React.FC = () => {
                     <td className="py-3 px-4 text-sm text-right text-white">{position.contracts}</td>
                     <td className="py-3 px-4 text-sm text-right text-white">{formatCurrency(position.totalPremium)}</td>
                     <td className="py-3 px-4 text-sm text-white">
-                      {new Date(position.expirationDate).toLocaleDateString()}
+                      {formatDateLocal(position.expirationDate)}
                       {position.status === 'open' && (
                         <span className={`ml-2 text-xs ${
                           daysUntil <= 7 ? 'text-yellow-400' : 'text-gray-500'
@@ -621,9 +633,24 @@ const Options: React.FC = () => {
       {/* Additional Analytics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gray-900 rounded-lg shadow p-6 border border-gray-800">
-          <p className="text-sm text-gray-400 mb-2">Avg Return Per Trade</p>
+          <div className="flex items-center gap-2 mb-2">
+            <p className="text-sm text-gray-400">
+              Avg Return Per Trade
+            </p>
+            <div className="group relative">
+              <svg className="w-4 h-4 text-gray-500 cursor-help" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              <div className="invisible group-hover:visible absolute left-0 top-6 w-64 p-2 bg-gray-800 text-xs text-gray-300 rounded shadow-lg z-10 border border-gray-700">
+                Average realized profit/loss per closed trade. Calculated as: Total Realized P/L ÷ Number of Closed Trades
+              </div>
+            </div>
+          </div>
           <p className="text-xl font-bold text-white">
             {formatCurrency(analytics.averageReturnPerTrade)}
+          </p>
+          <p className="text-sm text-gray-400 mt-1">
+            Per closed trade
           </p>
         </div>
 
@@ -794,6 +821,23 @@ const Options: React.FC = () => {
 
                 <div className="mb-4">
                   <label className="text-sm text-gray-400 block mb-2">
+                    Contracts to close *
+                  </label>
+                  <input
+                    type="number"
+                    value={closingContracts}
+                    onChange={(e) => setClosingContracts(e.target.value)}
+                    placeholder={position.contracts.toString()}
+                    step="1"
+                    min="1"
+                    max={position.contracts}
+                    className="w-full px-3 py-2 rounded-md border border-gray-600 bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Available: {position.contracts} contracts</p>
+                </div>
+
+                <div className="mb-4">
+                  <label className="text-sm text-gray-400 block mb-2">
                     Closing price per share (for manual close)
                   </label>
                   <input
@@ -846,6 +890,7 @@ const Options: React.FC = () => {
                   <button
                     onClick={() => {
                       setClosingPositionId(null);
+                      setClosingContracts('');
                       setClosingPrice('');
                       setClosingFees('');
                     }}

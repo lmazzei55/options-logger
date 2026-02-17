@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { formatDateLocal } from '../utils/dateUtils';
 import { useAppContext } from '../context/AppContext';
 import { formatCurrency } from '../utils/calculations';
 import { Search, Edit2, Trash2, ArrowUpDown, Plus } from 'lucide-react';
@@ -239,6 +240,7 @@ const Transactions: React.FC = () => {
                       {sortField === 'amount' && <ArrowUpDown className="w-3 h-3" />}
                     </div>
                   </th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-300">Fees</th>
                   {!selectedAccountId && (
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-300">Account</th>
                   )}
@@ -249,7 +251,7 @@ const Transactions: React.FC = () => {
                 {allTransactions.map((transaction, index) => (
                   <tr key={index} className="border-b border-gray-800 hover:bg-gray-800">
                     <td className="py-3 px-4 text-sm text-white">
-                      {new Date(transaction.date).toLocaleDateString()}
+                      {formatDateLocal(transaction.date)}
                     </td>
                     <td className="py-3 px-4">
                       <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${
@@ -277,6 +279,9 @@ const Transactions: React.FC = () => {
                       transaction.amount >= 0 ? 'text-green-400' : 'text-red-400'
                     }`}>
                       {formatCurrency(transaction.amount)}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-right text-gray-400">
+                      {formatCurrency((transaction as any).fees || 0)}
                     </td>
                     {!selectedAccountId && (
                       <td className="py-3 px-4 text-sm text-gray-400">

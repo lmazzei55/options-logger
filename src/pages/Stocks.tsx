@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { formatDateLocal } from '../utils/dateUtils';
 import { Plus, Edit2, Trash2, Search, X } from 'lucide-react';
 import StockTransactionModal from '../components/modals/StockTransactionModal';
 import type { StockTransaction } from '../types';
@@ -231,7 +232,7 @@ const Stocks: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-400">
-                        {new Date(position.firstPurchaseDate).toLocaleDateString()}
+                        {formatDateLocal(position.firstPurchaseDate)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

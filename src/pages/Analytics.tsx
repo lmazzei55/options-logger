@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { formatDateLocal, formatDateLocalWithOptions } from '../utils/dateUtils';
 import { useAppContext } from '../context/AppContext';
 import {
   calculatePortfolioSummary,
@@ -76,7 +77,7 @@ const Analytics: React.FC = () => {
     const data = sorted.map(t => {
       cumulative += t.totalPremium - t.fees;
       return {
-        date: new Date(t.transactionDate).toLocaleDateString(),
+        date: formatDateLocal(t.transactionDate),
         premium: cumulative
       };
     });
@@ -134,7 +135,7 @@ const Analytics: React.FC = () => {
     filteredOptionTransactions
       .filter(t => t.action === 'sell-to-open')
       .forEach(t => {
-        const month = new Date(t.transactionDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+        const month = formatDateLocalWithOptions(t.transactionDate, { year: 'numeric', month: 'short' });
         monthlyTotals[month] = (monthlyTotals[month] || 0) + t.totalPremium;
       });
 

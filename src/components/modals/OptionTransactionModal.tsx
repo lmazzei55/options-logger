@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { formatDateLocal, formatDateLocalWithOptions } from '../../utils/dateUtils';
 import type { OptionTransaction } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { calculateAnnualizedReturn, daysUntilExpiration } from '../../utils/calculations';
@@ -47,14 +48,14 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
     if (transaction) {
       setFormData({
         accountId: transaction.accountId,
-        transactionDate: transaction.transactionDate.split('T')[0],
+        transactionDate: transaction.transactionDate.includes('T') ? transaction.transactionDate.split('T')[0] : transaction.transactionDate,
         action: transaction.action,
         ticker: transaction.ticker,
         strategy: transaction.strategy,
         optionType: transaction.optionType,
         contracts: transaction.contracts,
         strikePrice: transaction.strikePrice,
-        expirationDate: transaction.expirationDate.split('T')[0],
+        expirationDate: transaction.expirationDate.includes('T') ? transaction.expirationDate.split('T')[0] : transaction.expirationDate,
         premiumPerShare: transaction.premiumPerShare,
         fees: transaction.fees || 0,
         notes: transaction.notes || '',
@@ -122,6 +123,32 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
     );
   }, [stockPositions, formData.ticker, formData.accountId]);
 
+  // When editing a closing transaction, calculate available contracts
+  // by adding back the contracts from the transaction being edited
+  const availableContractsForClosing = useMemo(() => {
+    if (!transaction || !formData.ticker || !formData.accountId) return 0;
+    
+    // Find the matching open position
+    const matchingPosition = optionPositions.find(
+      p => p.ticker === formData.ticker && 
+           p.accountId === formData.accountId &&
+           p.strategy === formData.strategy &&
+           p.strikePrice === formData.strikePrice &&
+           p.expirationDate === formData.expirationDate &&
+           p.status === 'open'
+    );
+    
+    if (!matchingPosition) return 0;
+    
+    // If editing a closing transaction, add back the original contracts
+    const isClosingAction = formData.action === 'buy-to-close' || formData.action === 'sell-to-close';
+    if (isClosingAction && transaction) {
+      return matchingPosition.contracts + transaction.contracts;
+    }
+    
+    return matchingPosition.contracts;
+  }, [transaction, formData, optionPositions]);
+
   const availableCash = useMemo(() => {
     if (!selectedAccount) return 0;
     const activeCollateral = optionPositions
@@ -175,6 +202,15 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
     if (!hasSufficientShares) {
       newErrors.contracts = `Insufficient shares. You own ${stockPosition?.shares || 0} shares. Need ${formData.contracts * 100}.`;
     }
+    
+    // Validate closing transactions have enough contracts
+    const isClosingAction = formData.action === 'buy-to-close' || formData.action === 'sell-to-close';
+    if (isClosingAction && transaction) {
+      // When editing, use availableContractsForClosing which includes the original transaction's contracts
+      if (formData.contracts > availableContractsForClosing) {
+        newErrors.contracts = `Insufficient contracts. Available: ${availableContractsForClosing} contracts.`;
+      }
+    }
     if (!hasSufficientCash) {
       newErrors.strikePrice = `Insufficient cash. Available: $${availableCash.toFixed(2)}. Required: $${collateralRequired.toFixed(2)}.`;
     }
@@ -199,14 +235,14 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
 
     const transactionData: Omit<OptionTransaction, 'id'> = {
       accountId: formData.accountId,
-      transactionDate: new Date(formData.transactionDate).toISOString(),
+      transactionDate: formData.transactionDate,
       action: formData.action,
       ticker: formData.ticker.toUpperCase(),
       strategy: formData.strategy,
       optionType: formData.optionType,
       contracts: formData.contracts,
       strikePrice: formData.strikePrice,
-      expirationDate: new Date(formData.expirationDate).toISOString(),
+      expirationDate: formData.expirationDate,
       premiumPerShare: formData.premiumPerShare,
       totalPremium,
       fees: formData.fees,
@@ -323,6 +359,11 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
                          p.status === 'open'
                   );
                   if (selectedPosition) {
+                    // If editing, add back the contracts from the original transaction
+                    const availableContracts = transaction 
+                      ? selectedPosition.contracts + transaction.contracts
+                      : selectedPosition.contracts;
+                    
                     setFormData({
                       ...formData,
                       ticker,
@@ -330,7 +371,7 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
                       expirationDate: exp,
                       optionType: type as 'call' | 'put',
                       strategy: selectedPosition.strategy,
-                      contracts: Math.min(formData.contracts, selectedPosition.contracts),
+                      contracts: Math.min(formData.contracts, availableContracts),
                       premiumPerShare: selectedPosition.totalPremium / (selectedPosition.contracts * 100) / 2 // Default to half premium for closing
                     });
                   }
@@ -344,7 +385,7 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
                     const key = `${position.ticker}|${position.strikePrice}|${position.expirationDate}|${position.optionType}`;
                     return (
                       <option key={key} value={key}>
-                        {position.ticker} ${position.strikePrice} {position.optionType.toUpperCase()} - {position.contracts} contracts - Exp: {new Date(position.expirationDate).toLocaleDateString()}
+                        {position.ticker} ${position.strikePrice} {position.optionType.toUpperCase()} - {position.contracts} contracts - Exp: {formatDateLocal(position.expirationDate)}
                       </option>
                     );
                   })}

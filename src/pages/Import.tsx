@@ -20,6 +20,8 @@ const Import: React.FC = () => {
   const [selectedAccount, setSelectedAccount] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
+  const [processingProgress, setProcessingProgress] = useState(0);
   const [parsedTransactions, setParsedTransactions] = useState<ParsedTransaction[]>([]);
   const [parsedOptionTransactions, setParsedOptionTransactions] = useState<ParsedOptionTransaction[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
@@ -57,6 +59,8 @@ const Import: React.FC = () => {
     }
     
     setIsProcessing(true);
+    setLoadingMessage('Preparing to parse statements...');
+    setProcessingProgress(0);
     setErrors([]);
     setWarnings([]);
     
@@ -77,6 +81,10 @@ const Import: React.FC = () => {
       // Process each file
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        const progress = Math.round(((i + 1) / files.length) * 100);
+        setLoadingMessage(`Processing ${file.name} (${i + 1}/${files.length})...`);
+        setProcessingProgress(progress);
+        
         try {
           // Extract text from PDF
           const pdfText = await extractTextFromPDF(file);
@@ -390,6 +398,20 @@ const Import: React.FC = () => {
         >
           {isProcessing ? `Processing ${files.length} file(s)...` : `Parse ${files.length > 0 ? files.length : ''} Statement${files.length !== 1 ? 's' : ''}`}
         </button>
+        
+        {/* Loading Indicator */}
+        {isProcessing && (
+          <div className="mt-4 space-y-2">
+            <div className="text-sm text-gray-400">{loadingMessage}</div>
+            <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+              <div 
+                className="bg-blue-600 h-full transition-all duration-300 ease-out"
+                style={{ width: `${processingProgress}%` }}
+              />
+            </div>
+            <div className="text-xs text-gray-500 text-right">{processingProgress}%</div>
+          </div>
+        )}
       </div>
       
       {/* Errors */}

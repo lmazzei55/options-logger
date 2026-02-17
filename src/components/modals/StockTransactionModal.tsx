@@ -50,7 +50,7 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
     if (transaction) {
       setFormData({
         accountId: transaction.accountId,
-        date: transaction.date.split('T')[0],
+        date: transaction.date.includes('T') ? transaction.date.split('T')[0] : transaction.date,
         action: transaction.action,
         ticker: transaction.ticker,
         shares: transaction.shares,
@@ -98,8 +98,15 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
   const canSell = useMemo(() => {
     if (formData.action !== 'sell' && formData.action !== 'transfer-out') return true;
     if (!currentPosition) return false;
-    return currentPosition.shares >= formData.shares;
-  }, [formData.action, formData.shares, currentPosition]);
+    
+    // When editing a sell transaction, add back the original shares
+    let availableShares = currentPosition.shares;
+    if (transaction && (transaction.action === 'sell' || transaction.action === 'transfer-out')) {
+      availableShares += transaction.shares;
+    }
+    
+    return availableShares >= formData.shares;
+  }, [formData.action, formData.shares, currentPosition, transaction]);
 
   const validate = () => {
     const newErrors: Record<string, string> = {};

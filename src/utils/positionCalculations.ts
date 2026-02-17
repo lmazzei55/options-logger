@@ -131,7 +131,7 @@ export function detectStockWashSales(
         .sort((a: any, b: any) => new Date(b.date || b.transactionDate).getTime() - new Date(a.date || a.transactionDate).getTime());
       
       if (priorBuys.length > 0) {
-        const costBasis = priorBuys[0].pricePerShare * priorBuys[0].shares;
+        const costBasis = priorBuys[0].pricePerShare * sellTxn.shares;
         const saleProceeds = sellTxn.pricePerShare * sellTxn.shares;
         const loss = saleProceeds - costBasis;
         
@@ -165,7 +165,7 @@ export function detectStockWashSales(
     
     if (priorBuys.length === 0) return null;
     
-    const costBasis = priorBuys[0].pricePerShare * priorBuys[0].shares;
+    const costBasis = priorBuys[0].pricePerShare * targetTxn.shares;
     const saleProceeds = targetTxn.pricePerShare * targetTxn.shares;
     const loss = saleProceeds - costBasis;
     

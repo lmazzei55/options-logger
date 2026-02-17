@@ -47,14 +47,14 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
     if (transaction) {
       setFormData({
         accountId: transaction.accountId,
-        transactionDate: transaction.transactionDate.split('T')[0],
+        transactionDate: transaction.transactionDate.includes('T') ? transaction.transactionDate.split('T')[0] : transaction.transactionDate,
         action: transaction.action,
         ticker: transaction.ticker,
         strategy: transaction.strategy,
         optionType: transaction.optionType,
         contracts: transaction.contracts,
         strikePrice: transaction.strikePrice,
-        expirationDate: transaction.expirationDate.split('T')[0],
+        expirationDate: transaction.expirationDate.includes('T') ? transaction.expirationDate.split('T')[0] : transaction.expirationDate,
         premiumPerShare: transaction.premiumPerShare,
         fees: transaction.fees || 0,
         notes: transaction.notes || '',

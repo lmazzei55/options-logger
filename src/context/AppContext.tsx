@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type {
   InvestmentAccount,
@@ -111,6 +111,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [templates, setTemplates] = useState<TransactionTemplate[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const isInitialMount = useRef(true);
   
   // Calculate positions whenever transactions change
   const stockPositions = calculateStockPositions(stockTransactions, selectedAccountId || undefined);
@@ -135,8 +136,13 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }
   }, []);
   
-  // Save data to localStorage whenever it changes
+  // Save data to localStorage whenever it changes (skip initial render)
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    
     const dataToSave = {
       accounts,
       stockTransactions,
@@ -146,7 +152,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       settings,
       selectedAccountId
     };
+    console.log('Saving to localStorage:', dataToSave);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+    console.log('Data saved successfully');
   }, [accounts, stockTransactions, optionTransactions, tags, templates, settings, selectedAccountId]);
   
   // ==========================================

@@ -12,6 +12,10 @@ A privacy-focused web application for tracking options and stock trades with aut
   - FIFO-based position tracking for partial closes
   - 30-day wash sale detection
   - Fee tracking and inclusion in all calculations
+- **Security Features**:
+  - Input sanitization to prevent XSS attacks
+  - Comprehensive test suite with 28+ security tests
+  - All data processing happens client-side
 - **Data Management**: Export/import your data as JSON for backup and portability
 - **Dark Mode UI**: Modern, responsive interface with left sidebar navigation
 - **Transaction Management**: Add, edit, and delete transactions manually or via import
@@ -276,6 +280,17 @@ src/
 │   └── ...
 └── types/              # TypeScript type definitions
 ```
+
+## Security
+
+This application includes comprehensive security measures:
+
+- **Input Sanitization**: All user inputs are sanitized to prevent XSS attacks
+  - HTML tags are stripped from all text inputs
+  - JavaScript protocols and event handlers are blocked
+  - Input length limits prevent buffer overflow attacks
+- **Comprehensive Testing**: 28+ security tests ensure sanitization works correctly
+- **Client-Side Only**: No data is ever sent to external servers
 
 ## Data Privacy
 

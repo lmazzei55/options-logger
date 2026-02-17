@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { formatDateLocal, formatDateLocalWithOptions } from '../../utils/dateUtils';
 import type { OptionTransaction } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { calculateAnnualizedReturn, daysUntilExpiration } from '../../utils/calculations';
@@ -368,7 +369,7 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
                     const key = `${position.ticker}|${position.strikePrice}|${position.expirationDate}|${position.optionType}`;
                     return (
                       <option key={key} value={key}>
-                        {position.ticker} ${position.strikePrice} {position.optionType.toUpperCase()} - {position.contracts} contracts - Exp: {new Date(position.expirationDate).toLocaleDateString()}
+                        {position.ticker} ${position.strikePrice} {position.optionType.toUpperCase()} - {position.contracts} contracts - Exp: {formatDateLocal(position.expirationDate)}
                       </option>
                     );
                   })}

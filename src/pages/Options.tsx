@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatDateLocal } from '../utils/dateUtils';
 import { useAppContext } from '../context/AppContext';
 import {
   formatCurrency,
@@ -345,7 +346,7 @@ const Options: React.FC = () => {
           <div>
             <p className="text-xs text-gray-400">Expiration</p>
             <p className="text-sm font-semibold text-white">
-              {new Date(position.expirationDate).toLocaleDateString()}
+              {formatDateLocal(position.expirationDate)}
             </p>
           </div>
           <div>
@@ -481,7 +482,7 @@ const Options: React.FC = () => {
                     <td className="py-3 px-4 text-sm text-right text-white">{position.contracts}</td>
                     <td className="py-3 px-4 text-sm text-right text-white">{formatCurrency(position.totalPremium)}</td>
                     <td className="py-3 px-4 text-sm text-white">
-                      {new Date(position.expirationDate).toLocaleDateString()}
+                      {formatDateLocal(position.expirationDate)}
                       {position.status === 'open' && (
                         <span className={`ml-2 text-xs ${
                           daysUntil <= 7 ? 'text-yellow-400' : 'text-gray-500'

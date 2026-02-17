@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { formatDateLocal } from '../utils/dateUtils';
 import { useAppContext } from '../context/AppContext';
 import { formatCurrency } from '../utils/calculations';
 import { TrendingUp, TrendingDown, Calendar, DollarSign } from 'lucide-react';
@@ -469,7 +470,7 @@ const Taxes: React.FC = () => {
                       <td className="py-3 px-4 text-sm text-white font-medium">{lot.ticker}</td>
                       <td className="py-3 px-4 text-sm text-right text-white">{lot.shares}</td>
                       <td className="py-3 px-4 text-sm text-white">
-                        {new Date(lot.purchaseDate).toLocaleDateString()}
+                        {formatDateLocal(lot.purchaseDate)}
                       </td>
                       <td className="py-3 px-4 text-sm text-right text-white">{lot.daysHeld}</td>
                       <td className="py-3 px-4 text-center">

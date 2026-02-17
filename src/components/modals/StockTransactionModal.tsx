@@ -124,7 +124,17 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
       newErrors.pricePerShare = 'Price must be greater than 0';
     }
     if (!canSell) {
-      newErrors.shares = `Insufficient shares. You own ${currentPosition?.shares || 0} shares.`;
+      // Calculate available shares for the error message
+      let availableShares = currentPosition?.shares || 0;
+      if (transaction && (transaction.action === 'sell' || transaction.action === 'transfer-out')) {
+        availableShares += transaction.shares;
+      }
+      
+      if (transaction) {
+        newErrors.shares = `Insufficient shares. You can sell up to ${availableShares} shares (current position + original transaction).`;
+      } else {
+        newErrors.shares = `Insufficient shares. You own ${availableShares} shares.`;
+      }
     }
 
     setErrors(newErrors);
@@ -159,12 +169,18 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
       const washSaleInfo = detectStockWashSales(allTransactions, newTxnId);
       
       if (washSaleInfo && washSaleInfo.hasWashSale) {
-        alert(
-          `⚠️ Potential Wash Sale Detected\n\n` +
-          `This ${formData.action} transaction for ${formData.ticker} may trigger wash sale rules.\n\n` +
-          `Loss amount: $${washSaleInfo.lossAmount.toFixed(2)}\n\n` +
-          `There are related transactions within 30 days before/after this transaction that could disallow the loss deduction for tax purposes.`
-        );
+        const isBuy = formData.action === 'buy';
+        const message = isBuy
+          ? `⚠️ Potential Wash Sale Detected\n\n` +
+            `You are buying ${formData.ticker} within 30 days of selling it at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
+            `This may disallow the loss deduction for tax purposes under IRS wash sale rules.\n\n` +
+            `You have ${washSaleInfo.relatedTransactionIds.length} related sell transaction(s) within 30 days.`
+          : `⚠️ Potential Wash Sale Detected\n\n` +
+            `You sold ${formData.ticker} at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
+            `You have ${washSaleInfo.relatedTransactionIds.length} related buy transaction(s) within 30 days before/after this sale.\n\n` +
+            `This may disallow the loss deduction for tax purposes under IRS wash sale rules.`;
+        
+        alert(message);
       }
     }
 

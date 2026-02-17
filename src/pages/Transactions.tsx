@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { formatDateLocal } from '../utils/dateUtils';
 import { useAppContext } from '../context/AppContext';
 import { formatCurrency } from '../utils/calculations';
 import { Search, Edit2, Trash2, ArrowUpDown, Plus } from 'lucide-react';
@@ -250,7 +251,7 @@ const Transactions: React.FC = () => {
                 {allTransactions.map((transaction, index) => (
                   <tr key={index} className="border-b border-gray-800 hover:bg-gray-800">
                     <td className="py-3 px-4 text-sm text-white">
-                      {new Date(transaction.date).toLocaleDateString()}
+                      {formatDateLocal(transaction.date)}
                     </td>
                     <td className="py-3 px-4">
                       <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${

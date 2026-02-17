@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatDateLocal } from '../utils/dateUtils';
 import { useAppContext } from '../context/AppContext';
 import {
   calculatePortfolioSummary,
@@ -484,7 +485,7 @@ const Dashboard: React.FC = () => {
                       rows.push(
                         <tr key={`option-${option.id}`} className="border-b border-gray-800 hover:bg-gray-800 bg-gray-850">
                           <td className="py-2 px-4 text-sm text-gray-400 pl-8">
-                            <span className="text-purple-400">↳</span> {option.optionType.toUpperCase()} ${option.strikePrice} exp {new Date(option.expirationDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            <span className="text-purple-400">↳</span> {option.optionType.toUpperCase()} ${option.strikePrice} exp {formatDateLocalWithOptions(option.expirationDate, { month: 'short', day: 'numeric' })}
                           </td>
                           {!selectedAccountId && (
                             <td className="py-2 px-4 text-sm text-gray-500">{optAccount?.name}</td>
@@ -598,7 +599,7 @@ const Dashboard: React.FC = () => {
                 {allTransactions.map((transaction, index) => (
                   <tr key={index} className="border-b border-gray-800 hover:bg-gray-800">
                     <td className="py-3 px-4 text-sm text-white">
-                      {new Date(transaction.date).toLocaleDateString()}
+                      {formatDateLocal(transaction.date)}
                     </td>
                     <td className="py-3 px-4">
                       <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${

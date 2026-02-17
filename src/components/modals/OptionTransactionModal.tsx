@@ -3,6 +3,7 @@ import type { OptionTransaction } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { calculateAnnualizedReturn, daysUntilExpiration } from '../../utils/calculations';
 import Modal from '../common/Modal';
+import { sanitizeTicker, sanitizeNotes } from '../../utils/sanitization';
 
 interface OptionTransactionModalProps {
   isOpen: boolean;
@@ -349,7 +350,7 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
               <input
                 type="text"
                 value={formData.ticker}
-                onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
+                onChange={(e) => setFormData({ ...formData, ticker: sanitizeTicker(e.target.value) })}
                 placeholder="AAPL"
                 className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -571,7 +572,7 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
           </label>
           <textarea
             value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+            onChange={(e) => setFormData({ ...formData, notes: sanitizeNotes(e.target.value) })}
             rows={3}
             className="w-full px-4 py-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Optional notes about this transaction..."

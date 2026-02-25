@@ -1,4 +1,4 @@
-import type { BrokerParser, ImportResult, ParsedOptionTransaction, ParsedTransaction } from './BrokerParser';
+import type { BrokerParser, ImportResult, ParsedTransaction, ParsedOptionTransaction, AccountInfo } from './BrokerParser';
 
 export class FidelityParser implements BrokerParser {
   name = 'Fidelity';
@@ -11,6 +11,9 @@ export class FidelityParser implements BrokerParser {
     const warnings: string[] = [];
 
     try {
+      // Extract account information
+      const accountInfo = this.extractAccountInfo(pdfText);
+
       // Build ticker map from Holdings section
       const tickerMap = this.buildTickerMap(pdfText);
 
@@ -23,7 +26,7 @@ export class FidelityParser implements BrokerParser {
       
       if (!txnSectionMatch) {
         errors.push('Could not find Transaction Details section in PDF');
-        return { success: false, transactions: [], optionTransactions: [], errors, warnings };
+        return { success: false, transactions: [], optionTransactions: [], accountInfo, errors, warnings };
       }
 
       const txnSection = txnSectionMatch[0];
@@ -121,12 +124,13 @@ export class FidelityParser implements BrokerParser {
         success: transactions.length > 0 || optionTransactions.length > 0,
         transactions,
         optionTransactions,
+        accountInfo,
         errors,
         warnings
       };
     } catch (error) {
       errors.push(`Parsing error: ${error instanceof Error ? error.message : String(error)}`);
-      return { success: false, transactions: [], optionTransactions: [], errors, warnings };
+      return { success: false, transactions: [], optionTransactions: [], accountInfo: undefined, errors, warnings };
     }
   }
 
@@ -397,7 +401,6 @@ export class FidelityParser implements BrokerParser {
         action: stockAction,
         shares,
         pricePerShare,
-        totalAmount,
         fees,
         notes: `Imported from Fidelity statement`
       },
@@ -424,5 +427,51 @@ export class FidelityParser implements BrokerParser {
     }
     
     return dateStr;
+  }
+
+  private extractAccountInfo(pdfText: string): AccountInfo | undefined {
+    // Try to extract account number
+    // Common patterns in Fidelity statements:
+    // "Account Number: Z12345678"
+    // "Account #: Z12345678"
+    // "Account Z12345678"
+    const accountNumberMatch = pdfText.match(/Account\s+(?:Number|#)?\s*:?\s*([A-Z]?\d{4,10})/i);
+    
+    if (!accountNumberMatch) {
+      return undefined;
+    }
+
+    const accountNumber = accountNumberMatch[1];
+
+    // Try to extract account type
+    // Patterns: "Individual Brokerage", "Retirement Account", "Margin Account"
+    let accountType: 'brokerage' | 'retirement' | 'margin' | 'crypto' | undefined;
+    let accountName: string | undefined;
+
+    const accountTypeMatch = pdfText.match(/Account\s+Type\s*:?\s*(.*?)(?:\n|$)/i);
+    if (accountTypeMatch) {
+      const typeText = accountTypeMatch[1].toLowerCase();
+      if (typeText.includes('retirement') || typeText.includes('ira') || typeText.includes('401k')) {
+        accountType = 'retirement';
+      } else if (typeText.includes('margin')) {
+        accountType = 'margin';
+      } else if (typeText.includes('brokerage') || typeText.includes('individual')) {
+        accountType = 'brokerage';
+      }
+      accountName = accountTypeMatch[1].trim();
+    }
+
+    // Try to extract account name/nickname
+    const accountNameMatch = pdfText.match(/Account\s+Name\s*:?\s*(.*?)(?:\n|$)/i);
+    if (accountNameMatch && !accountName) {
+      accountName = accountNameMatch[1].trim();
+    }
+
+    return {
+      accountNumber,
+      broker: 'Fidelity',
+      accountName,
+      accountType
+    };
   }
 }

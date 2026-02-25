@@ -1,4 +1,4 @@
-import type { BrokerParser, ImportResult, ParsedOptionTransaction, ParsedTransaction } from './BrokerParser';
+import type { BrokerParser, ImportResult, ParsedTransaction, ParsedOptionTransaction, AccountInfo } from './BrokerParser';
 
 export class SchwabMonthlyParser implements BrokerParser {
   name = 'Schwab Monthly Statement';
@@ -11,6 +11,9 @@ export class SchwabMonthlyParser implements BrokerParser {
     const warnings: string[] = [];
 
     try {
+      // Extract account information
+      const accountInfo = this.extractAccountInfo(pdfText);
+
       // Extract year from statement period
       const yearMatch = pdfText.match(/(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d+-\d+,\s+(\d{4})/);
       const year = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
@@ -20,7 +23,7 @@ export class SchwabMonthlyParser implements BrokerParser {
       
       if (!txnSectionMatch) {
         errors.push('Could not find Transaction Details section in PDF');
-        return { success: false, transactions: [], optionTransactions: [], errors, warnings };
+        return { success: false, transactions: [], optionTransactions: [], accountInfo, errors, warnings };
       }
 
       const txnSection = txnSectionMatch[0];
@@ -121,12 +124,13 @@ export class SchwabMonthlyParser implements BrokerParser {
         success: transactions.length > 0 || optionTransactions.length > 0,
         transactions,
         optionTransactions,
+        accountInfo,
         errors,
         warnings
       };
     } catch (error) {
       errors.push(`Parsing error: ${error instanceof Error ? error.message : String(error)}`);
-      return { success: false, transactions: [], optionTransactions: [], errors, warnings };
+      return { success: false, transactions: [], optionTransactions: [], accountInfo: undefined, errors, warnings };
     }
   }
 
@@ -377,7 +381,6 @@ export class SchwabMonthlyParser implements BrokerParser {
         action: stockAction,
         shares,
         pricePerShare,
-        totalAmount,
         fees,
         notes: `Imported from Schwab monthly statement`
       },
@@ -395,5 +398,45 @@ export class SchwabMonthlyParser implements BrokerParser {
     const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
     
     return `${year}-${month}-${day}`;
+  }
+
+  private extractAccountInfo(pdfText: string): AccountInfo | undefined {
+    // Try to extract account number
+    // Common patterns in Schwab statements:
+    // "Account Number ****1234"
+    // "Account #: 12345678"
+    // "Acct: 1234-5678"
+    const accountNumberMatch = pdfText.match(/Account\s+(?:Number|#|Acct)?\s*:?\s*[*]*(\d{4,10})/i);
+    
+    if (!accountNumberMatch) {
+      return undefined;
+    }
+
+    const accountNumber = accountNumberMatch[1];
+
+    // Try to extract account type
+    // Patterns: "Account Type: Individual", "Type: Margin"
+    let accountType: 'brokerage' | 'retirement' | 'margin' | 'crypto' | undefined;
+    let accountName: string | undefined;
+
+    const accountTypeMatch = pdfText.match(/(?:Account\s+)?Type\s*:?\s*(.*?)(?:\n|$)/i);
+    if (accountTypeMatch) {
+      const typeText = accountTypeMatch[1].toLowerCase();
+      if (typeText.includes('retirement') || typeText.includes('ira') || typeText.includes('401k')) {
+        accountType = 'retirement';
+      } else if (typeText.includes('margin')) {
+        accountType = 'margin';
+      } else if (typeText.includes('brokerage') || typeText.includes('individual')) {
+        accountType = 'brokerage';
+      }
+      accountName = accountTypeMatch[1].trim();
+    }
+
+    return {
+      accountNumber,
+      broker: 'Schwab',
+      accountName,
+      accountType
+    };
   }
 }

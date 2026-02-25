@@ -21,10 +21,18 @@ export interface ParsedOptionTransaction {
   notes?: string;
 }
 
+export interface AccountInfo {
+  accountNumber: string;  // Last 4 digits or full number from statement
+  broker: string;         // e.g., "Fidelity", "Schwab", "Vanguard"
+  accountName?: string;   // Optional: extracted account nickname
+  accountType?: 'brokerage' | 'retirement' | 'margin' | 'crypto';
+}
+
 export interface ImportResult {
   success: boolean;
   transactions: ParsedTransaction[];
   optionTransactions: ParsedOptionTransaction[];
+  accountInfo?: AccountInfo;  // Optional: Extracted account information
   errors: string[];
   warnings: string[];
 }

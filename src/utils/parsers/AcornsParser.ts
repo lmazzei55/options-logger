@@ -1,4 +1,4 @@
-import type { BrokerParser, ImportResult, ParsedTransaction } from './BrokerParser';
+import type { BrokerParser, ImportResult, ParsedTransaction, AccountInfo } from './BrokerParser';
 
 export class AcornsParser implements BrokerParser {
   name = 'Acorns';
@@ -9,6 +9,8 @@ export class AcornsParser implements BrokerParser {
     const errors: string[] = [];
     const warnings: string[] = [];
     
+    // Extract account information
+    const accountInfo = this.extractAccountInfo(pdfText);
 
     try {
       // Find the Transactions section
@@ -30,7 +32,7 @@ export class AcornsParser implements BrokerParser {
       
       if (startIndex === -1 || endIndex === -1) {
         errors.push('Could not find Securities Bought section in PDF');
-        return { success: false, transactions: [], optionTransactions: [], errors, warnings };
+        return { success: false, transactions: [], optionTransactions: [], accountInfo, errors, warnings };
       }
       
       // Extract the transaction lines
@@ -105,12 +107,13 @@ export class AcornsParser implements BrokerParser {
         success: transactions.length > 0,
         transactions,
         optionTransactions: [], // Acorns doesn't support options
+        accountInfo,
         errors,
         warnings
       };
     } catch (error) {
       errors.push(`Parsing error: ${error instanceof Error ? error.message : String(error)}`);
-      return { success: false, transactions: [], optionTransactions: [], errors, warnings };
+      return { success: false, transactions: [], optionTransactions: [], accountInfo: undefined, errors, warnings };
     }
   }
   
@@ -124,5 +127,28 @@ export class AcornsParser implements BrokerParser {
     const year = parts[2];
     
     return `${year}-${month}-${day}`;
+  }
+
+  private extractAccountInfo(pdfText: string): AccountInfo | undefined {
+    // Acorns statements typically show account info at the top
+    // Patterns: "Account: 12345678", "Acorns Account"
+    const accountNumberMatch = pdfText.match(/Account\s+(?:Number|#)?\s*:?\s*(\d{4,10})/i);
+    
+    if (!accountNumberMatch) {
+      // Acorns may not always show account number, return basic info
+      return {
+        accountNumber: 'ACORNS',
+        broker: 'Acorns',
+        accountType: 'brokerage'
+      };
+    }
+
+    const accountNumber = accountNumberMatch[1];
+
+    return {
+      accountNumber,
+      broker: 'Acorns',
+      accountType: 'brokerage' // Acorns is primarily a brokerage app
+    };
   }
 }

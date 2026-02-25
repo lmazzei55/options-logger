@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { getAvailableBrokers, getParser, type ParsedTransaction, type ParsedOptionTransaction, type AccountInfo } from '../utils/parsers';
@@ -41,6 +41,123 @@ const Import: React.FC = () => {
   const [autoMatchedAccount, setAutoMatchedAccount] = useState<string | null>(null);
   
   const brokers = getAvailableBrokers();
+  
+  // Validate transactions when account is selected (after dialogs)
+  useEffect(() => {
+    if (selectedAccount && parsedTransactions.length === 0 && parsedOptionTransactions.length === 0) {
+      return; // No transactions to validate
+    }
+    
+    if (!selectedAccount || (parsedTransactions.length === 0 && parsedOptionTransactions.length === 0)) {
+      return; // Nothing to validate yet
+    }
+    
+    // Run validation
+    const allValidationErrors: ValidationError[] = [];
+    let duplicates = 0;
+    
+    // Validate stock transactions
+    parsedTransactions.forEach((txn, idx) => {
+      const validation = validateStockTransaction({
+        accountId: selectedAccount,
+        date: txn.date,
+        ticker: txn.ticker,
+        action: txn.action,
+        shares: txn.shares,
+        pricePerShare: txn.pricePerShare,
+        fees: txn.fees || 0,
+        totalAmount: txn.shares * txn.pricePerShare + (txn.fees || 0),
+        notes: txn.notes
+      }, accounts);
+      
+      validation.errors.forEach(err => {
+        allValidationErrors.push({ ...err, field: `Stock #${idx + 1} - ${err.field}` });
+      });
+      validation.warnings.forEach(warn => {
+        allValidationErrors.push({ ...warn, field: `Stock #${idx + 1} - ${warn.field}` });
+      });
+      
+      // Check for duplicates
+      const dups = findDuplicateStockTransactions({
+        accountId: selectedAccount,
+        ticker: txn.ticker,
+        action: txn.action,
+        shares: txn.shares,
+        pricePerShare: txn.pricePerShare,
+        fees: txn.fees || 0,
+        totalAmount: txn.shares * txn.pricePerShare + (txn.fees || 0),
+        date: txn.date,
+        notes: txn.notes
+      }, stockTransactions);
+      
+      if (dups.length > 0) {
+        duplicates++;
+        allValidationErrors.push({
+          field: `Stock #${idx + 1}`,
+          message: `Duplicate transaction found (${txn.ticker} ${txn.action} on ${txn.date})`,
+          severity: 'warning'
+        });
+      }
+    });
+    
+    // Validate option transactions
+    parsedOptionTransactions.forEach((txn, idx) => {
+      const validation = validateOptionTransaction({
+        accountId: selectedAccount,
+        ticker: txn.ticker,
+        strategy: 'other',
+        optionType: txn.optionType,
+        action: txn.action,
+        contracts: txn.contracts,
+        strikePrice: txn.strikePrice,
+        premiumPerShare: txn.premiumPerShare,
+        totalPremium: txn.contracts * txn.premiumPerShare * 100,
+        fees: txn.fees || 0,
+        expirationDate: txn.expirationDate,
+        transactionDate: txn.date,
+        status: 'open',
+        notes: txn.notes
+      }, accounts);
+      
+      validation.errors.forEach(err => {
+        allValidationErrors.push({ ...err, field: `Option #${idx + 1} - ${err.field}` });
+      });
+      validation.warnings.forEach(warn => {
+        allValidationErrors.push({ ...warn, field: `Option #${idx + 1} - ${warn.field}` });
+      });
+      
+      // Check for duplicates
+      const dups = findDuplicateOptionTransactions({
+        accountId: selectedAccount,
+        ticker: txn.ticker,
+        strategy: 'other',
+        optionType: txn.optionType,
+        action: txn.action,
+        contracts: txn.contracts,
+        strikePrice: txn.strikePrice,
+        premiumPerShare: txn.premiumPerShare,
+        totalPremium: txn.contracts * txn.premiumPerShare * 100,
+        fees: txn.fees || 0,
+        expirationDate: txn.expirationDate,
+        transactionDate: txn.date,
+        status: 'open',
+        notes: txn.notes
+      }, optionTransactions);
+      
+      if (dups.length > 0) {
+        duplicates++;
+        allValidationErrors.push({
+          field: `Option #${idx + 1}`,
+          message: `Duplicate transaction found (${txn.ticker} ${txn.optionType} on ${txn.date})`,
+          severity: 'warning'
+        });
+      }
+    });
+    
+    setValidationErrors(allValidationErrors);
+    setDuplicateCount(duplicates);
+    setShowPreview(true);
+  }, [selectedAccount, parsedTransactions, parsedOptionTransactions, accounts, stockTransactions, optionTransactions]);
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
@@ -155,9 +272,25 @@ const Import: React.FC = () => {
         }
       }
       
+      // Only validate if we have a selected account (or will auto-select)
+      // If dialogs will be shown, validation will happen after account selection
+      const shouldValidateNow = selectedAccount || 
+        (firstAccountInfo && matchResult && matchResult.matched && matchResult.confidence === 'exact') ||
+        (firstAccountInfo && matchResult && matchResult.matched && matchResult.confidence === 'partial');
+      
       // Validate and check for duplicates
       const allValidationErrors: ValidationError[] = [];
       let duplicates = 0;
+      
+      if (!shouldValidateNow) {
+        // Skip validation for now - will validate after account is selected
+        setParsedTransactions(allTransactions);
+        setParsedOptionTransactions(allOptionTransactions);
+        setErrors(allErrors);
+        setWarnings(allWarnings);
+        setIsProcessing(false);
+        return;
+      }
 
       // Validate stock transactions
       allTransactions.forEach((txn, idx) => {

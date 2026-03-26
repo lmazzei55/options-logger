@@ -41,7 +41,7 @@ export const StockTransactionForm: React.FC<StockTransactionFormProps> = ({
     ? stockPositions.find(p => p.ticker === formData.ticker && p.accountId === formData.accountId)?.shares || 0
     : 0;
   
-  const handleChange = (field: string, value: any) => {
+  const handleChange = (field: string, value: string | number | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     // Clear error for this field
     if (errors[field]) {
@@ -95,7 +95,7 @@ export const StockTransactionForm: React.FC<StockTransactionFormProps> = ({
       accountId: formData.accountId,
       ticker: formData.ticker.toUpperCase(),
       companyName: formData.companyName,
-      action: formData.action as any,
+      action: formData.action as StockTransaction['action'],
       shares: parseFloat(formData.shares),
       pricePerShare: parseFloat(formData.pricePerShare),
       totalAmount: totalAmount,

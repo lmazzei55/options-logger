@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { StockTransaction } from '../../types';
 import { useAppContext } from '../../context/AppContext';
-import { detectStockWashSales } from '../../utils/positionCalculations';
 import Modal from '../common/Modal';
 import { sanitizeTicker, sanitizeNotes } from '../../utils/sanitization';
 
@@ -27,7 +26,6 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
     accounts,
     selectedAccountId,
     stockPositions,
-    stockTransactions,
     addStockTransaction,
     updateStockTransaction
   } = useAppContext();
@@ -47,35 +45,35 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Load transaction data if editing
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (transaction) {
-      setFormData({
-        accountId: transaction.accountId,
-        date: transaction.date.includes('T') ? transaction.date.split('T')[0] : transaction.date,
-        action: transaction.action,
-        ticker: transaction.ticker,
-        shares: transaction.shares,
-        pricePerShare: transaction.pricePerShare,
-        fees: transaction.fees || 0,
-        notes: transaction.notes || '',
-        tagIds: transaction.tagIds || []
-      });
-    } else {
-      // Reset form for new transaction, with optional initial values
-      setFormData({
-        accountId: initialValues?.accountId || selectedAccountId || '',
-        date: new Date().toISOString().split('T')[0],
-        action: initialValues?.action || 'buy',
-        ticker: initialValues?.ticker || '',
-        shares: initialValues?.shares || 0,
-        pricePerShare: 0,
-        fees: 0,
-        notes: '',
-        tagIds: []
-      });
-    }
+    const newFormData = transaction
+      ? {
+          accountId: transaction.accountId,
+          date: transaction.date.includes('T') ? transaction.date.split('T')[0] : transaction.date,
+          action: transaction.action,
+          ticker: transaction.ticker,
+          shares: transaction.shares,
+          pricePerShare: transaction.pricePerShare,
+          fees: transaction.fees || 0,
+          notes: transaction.notes || '',
+          tagIds: transaction.tagIds || []
+        }
+      : {
+          accountId: initialValues?.accountId || selectedAccountId || '',
+          date: new Date().toISOString().split('T')[0],
+          action: (initialValues?.action || 'buy') as StockTransaction['action'],
+          ticker: initialValues?.ticker || '',
+          shares: initialValues?.shares || 0,
+          pricePerShare: 0,
+          fees: 0,
+          notes: '',
+          tagIds: [] as string[]
+        };
+    setFormData(newFormData);
     setErrors({});
   }, [transaction, initialValues, selectedAccountId, isOpen]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const totalAmount = useMemo(() => {
     const baseAmount = formData.shares * formData.pricePerShare;
@@ -181,26 +179,8 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
     if (transaction) {
       updateStockTransaction(transaction.id, transactionData);
     } else {
-      const newTxnId = addStockTransaction(transactionData);
-      
-      // Check for wash sale
-      const allTransactions = [...stockTransactions, { ...transactionData, id: newTxnId }];
-      const washSaleInfo = detectStockWashSales(allTransactions, newTxnId);
-      
-      if (washSaleInfo && washSaleInfo.hasWashSale) {
-        const isBuy = formData.action === 'buy';
-        const message = isBuy
-          ? `⚠️ Potential Wash Sale Detected\n\n` +
-            `You are buying ${formData.ticker} within 30 days of selling it at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
-            `This may disallow the loss deduction for tax purposes under IRS wash sale rules.\n\n` +
-            `You have ${washSaleInfo.relatedTransactionIds.length} related sell transaction(s) within 30 days.`
-          : `⚠️ Potential Wash Sale Detected\n\n` +
-            `You sold ${formData.ticker} at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
-            `You have ${washSaleInfo.relatedTransactionIds.length} related buy transaction(s) within 30 days before/after this sale.\n\n` +
-            `This may disallow the loss deduction for tax purposes under IRS wash sale rules.`;
-        
-        alert(message);
-      }
+      // Wash sale detection is handled by AppContext.addStockTransaction
+      addStockTransaction(transactionData);
     }
 
     onClose();

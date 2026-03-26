@@ -9,7 +9,7 @@ import { useRef, useEffect, useCallback, useState } from 'react';
 /**
  * Debounces a function call
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
@@ -32,7 +32,7 @@ export function debounce<T extends (...args: any[]) => any>(
 /**
  * Throttles a function call
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: unknown[]) => unknown>(
   func: T,
   limit: number
 ): (...args: Parameters<T>) => void {
@@ -70,28 +70,30 @@ export function useDebounce<T>(value: T, delay: number): T {
  * Hook for previous value
  */
 export function usePrevious<T>(value: T): T | undefined {
-  const ref = useRef<T | undefined>(undefined);
-  
-  useEffect(() => {
-    ref.current = value;
-  }, [value]);
-  
-  return ref.current;
+  const [prev, setPrev] = useState<T | undefined>(undefined);
+  const [current, setCurrent] = useState<T>(value);
+
+  if (value !== current) {
+    setPrev(current);
+    setCurrent(value);
+  }
+
+  return prev;
 }
 
 /**
  * Hook for memoized callback that doesn't change on every render
  */
-export function useStableCallback<T extends (...args: any[]) => any>(
+export function useStableCallback<T extends (...args: unknown[]) => unknown>(
   callback: T
 ): T {
   const callbackRef = useRef(callback);
-  
+
   useEffect(() => {
     callbackRef.current = callback;
   }, [callback]);
-  
-  return useCallback((...args: any[]) => {
+
+  return useCallback((...args: unknown[]) => {
     return callbackRef.current(...args);
   }, []) as T;
 }
@@ -114,42 +116,46 @@ export function useIsMounted(): () => boolean {
 /**
  * Shallow comparison for objects
  */
-export function shallowEqual(obj1: any, obj2: any): boolean {
+export function shallowEqual(obj1: unknown, obj2: unknown): boolean {
   if (obj1 === obj2) return true;
   
   if (typeof obj1 !== 'object' || typeof obj2 !== 'object' || obj1 === null || obj2 === null) {
     return false;
   }
   
-  const keys1 = Object.keys(obj1);
-  const keys2 = Object.keys(obj2);
-  
+  const record1 = obj1 as Record<string, unknown>;
+  const record2 = obj2 as Record<string, unknown>;
+  const keys1 = Object.keys(record1);
+  const keys2 = Object.keys(record2);
+
   if (keys1.length !== keys2.length) return false;
-  
+
   for (const key of keys1) {
-    if (obj1[key] !== obj2[key]) return false;
+    if (record1[key] !== record2[key]) return false;
   }
-  
+
   return true;
 }
 
 /**
  * Deep comparison for objects
  */
-export function deepEqual(obj1: any, obj2: any): boolean {
+export function deepEqual(obj1: unknown, obj2: unknown): boolean {
   if (obj1 === obj2) return true;
-  
+
   if (typeof obj1 !== 'object' || typeof obj2 !== 'object' || obj1 === null || obj2 === null) {
     return false;
   }
-  
-  const keys1 = Object.keys(obj1);
-  const keys2 = Object.keys(obj2);
-  
+
+  const record1 = obj1 as Record<string, unknown>;
+  const record2 = obj2 as Record<string, unknown>;
+  const keys1 = Object.keys(record1);
+  const keys2 = Object.keys(record2);
+
   if (keys1.length !== keys2.length) return false;
-  
+
   for (const key of keys1) {
-    if (!deepEqual(obj1[key], obj2[key])) return false;
+    if (!deepEqual(record1[key], record2[key])) return false;
   }
   
   return true;

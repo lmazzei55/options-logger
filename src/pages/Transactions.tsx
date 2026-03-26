@@ -267,13 +267,13 @@ const Transactions: React.FC = () => {
                     </td>
                     <td className="py-3 px-4 text-sm text-gray-400">
                       {transaction.type === 'stock'
-                        ? (transaction as any).action
-                        : (transaction as any).strategy}
+                        ? ('action' in transaction ? transaction.action : '')
+                        : ('strategy' in transaction ? transaction.strategy : '')}
                     </td>
                     <td className="py-3 px-4 text-sm text-right text-white">
                       {transaction.type === 'stock'
-                        ? `${(transaction as any).shares} shares`
-                        : `${(transaction as any).contracts} contracts`}
+                        ? `${'shares' in transaction ? transaction.shares : 0} shares`
+                        : `${'contracts' in transaction ? transaction.contracts : 0} contracts`}
                     </td>
                     <td className={`py-3 px-4 text-sm text-right font-medium ${
                       transaction.amount >= 0 ? 'text-green-400' : 'text-red-400'
@@ -281,7 +281,7 @@ const Transactions: React.FC = () => {
                       {formatCurrency(transaction.amount)}
                     </td>
                     <td className="py-3 px-4 text-sm text-right text-gray-400">
-                      {formatCurrency((transaction as any).fees || 0)}
+                      {formatCurrency(transaction.fees || 0)}
                     </td>
                     {!selectedAccountId && (
                       <td className="py-3 px-4 text-sm text-gray-400">

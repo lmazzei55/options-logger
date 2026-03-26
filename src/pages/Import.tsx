@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { getAvailableBrokers, getParser, type ParsedTransaction, type ParsedOptionTransaction } from '../utils/parsers';
+import { useToast } from '../components/notifications/ToastContainer';
+import { getAvailableBrokers, getParser, type ParsedTransaction, type ParsedOptionTransaction, type AccountInfo } from '../utils/parsers';
 import { extractTextFromPDF } from '../utils/pdfExtractor';
 import {
   validateStockTransaction,
@@ -11,9 +12,13 @@ import {
   type ValidationError
 } from '../utils/validation';
 import { Upload, FileText, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { matchAccount, type AccountMatchResult } from '../utils/accountMatcher';
+import NewAccountDialog from '../components/modals/NewAccountDialog';
+import AccountMatchDialog from '../components/modals/AccountMatchDialog';
 
 const Import: React.FC = () => {
-  const { accounts, stockTransactions, optionTransactions, addStockTransaction, addOptionTransaction } = useAppContext();
+  const { accounts, stockTransactions, optionTransactions, addStockTransaction, addOptionTransaction, addAccount } = useAppContext();
+  const { addToast } = useToast();
   const navigate = useNavigate();
   
   const [selectedBroker, setSelectedBroker] = useState('');
@@ -30,7 +35,131 @@ const Import: React.FC = () => {
   const [duplicateCount, setDuplicateCount] = useState(0);
   const [showPreview, setShowPreview] = useState(false);
   
+  // Account matching state
+  const [detectedAccountInfo, setDetectedAccountInfo] = useState<AccountInfo | null>(null);
+  const [accountMatchResult, setAccountMatchResult] = useState<AccountMatchResult | null>(null);
+  const [showNewAccountDialog, setShowNewAccountDialog] = useState(false);
+  const [showAccountMatchDialog, setShowAccountMatchDialog] = useState(false);
+  const [autoMatchedAccount, setAutoMatchedAccount] = useState<string | null>(null);
+  
   const brokers = getAvailableBrokers();
+  
+  // Validate transactions when account is selected (after dialogs)
+  useEffect(() => {
+    if (selectedAccount && parsedTransactions.length === 0 && parsedOptionTransactions.length === 0) {
+      return; // No transactions to validate
+    }
+    
+    if (!selectedAccount || (parsedTransactions.length === 0 && parsedOptionTransactions.length === 0)) {
+      return; // Nothing to validate yet
+    }
+    
+    // Run validation
+    const allValidationErrors: ValidationError[] = [];
+    let duplicates = 0;
+    
+    // Validate stock transactions
+    parsedTransactions.forEach((txn, idx) => {
+      const validation = validateStockTransaction({
+        accountId: selectedAccount,
+        date: txn.date,
+        ticker: txn.ticker,
+        action: txn.action,
+        shares: txn.shares,
+        pricePerShare: txn.pricePerShare,
+        fees: txn.fees || 0,
+        totalAmount: txn.shares * txn.pricePerShare + (txn.fees || 0),
+        notes: txn.notes
+      }, accounts);
+      
+      validation.errors.forEach(err => {
+        allValidationErrors.push({ ...err, field: `Stock #${idx + 1} - ${err.field}` });
+      });
+      validation.warnings.forEach(warn => {
+        allValidationErrors.push({ ...warn, field: `Stock #${idx + 1} - ${warn.field}` });
+      });
+      
+      // Check for duplicates
+      const dups = findDuplicateStockTransactions({
+        accountId: selectedAccount,
+        ticker: txn.ticker,
+        action: txn.action,
+        shares: txn.shares,
+        pricePerShare: txn.pricePerShare,
+        fees: txn.fees || 0,
+        totalAmount: txn.shares * txn.pricePerShare + (txn.fees || 0),
+        date: txn.date,
+        notes: txn.notes
+      }, stockTransactions);
+      
+      if (dups.length > 0) {
+        duplicates++;
+        allValidationErrors.push({
+          field: `Stock #${idx + 1}`,
+          message: `Duplicate transaction found (${txn.ticker} ${txn.action} on ${txn.date})`,
+          severity: 'warning'
+        });
+      }
+    });
+    
+    // Validate option transactions
+    parsedOptionTransactions.forEach((txn, idx) => {
+      const validation = validateOptionTransaction({
+        accountId: selectedAccount,
+        ticker: txn.ticker,
+        strategy: 'other',
+        optionType: txn.optionType,
+        action: txn.action,
+        contracts: txn.contracts,
+        strikePrice: txn.strikePrice,
+        premiumPerShare: txn.premiumPerShare,
+        totalPremium: txn.contracts * txn.premiumPerShare * 100,
+        fees: txn.fees || 0,
+        expirationDate: txn.expirationDate,
+        transactionDate: txn.date,
+        status: 'open',
+        notes: txn.notes
+      }, accounts);
+      
+      validation.errors.forEach(err => {
+        allValidationErrors.push({ ...err, field: `Option #${idx + 1} - ${err.field}` });
+      });
+      validation.warnings.forEach(warn => {
+        allValidationErrors.push({ ...warn, field: `Option #${idx + 1} - ${warn.field}` });
+      });
+      
+      // Check for duplicates
+      const dups = findDuplicateOptionTransactions({
+        accountId: selectedAccount,
+        ticker: txn.ticker,
+        strategy: 'other',
+        optionType: txn.optionType,
+        action: txn.action,
+        contracts: txn.contracts,
+        strikePrice: txn.strikePrice,
+        premiumPerShare: txn.premiumPerShare,
+        totalPremium: txn.contracts * txn.premiumPerShare * 100,
+        fees: txn.fees || 0,
+        expirationDate: txn.expirationDate,
+        transactionDate: txn.date,
+        status: 'open',
+        notes: txn.notes
+      }, optionTransactions);
+      
+      if (dups.length > 0) {
+        duplicates++;
+        allValidationErrors.push({
+          field: `Option #${idx + 1}`,
+          message: `Duplicate transaction found (${txn.ticker} ${txn.optionType} on ${txn.date})`,
+          severity: 'warning'
+        });
+      }
+    });
+    
+    setValidationErrors(allValidationErrors);
+    setDuplicateCount(duplicates);
+    setShowPreview(true);
+  }, [selectedAccount, parsedTransactions, parsedOptionTransactions, accounts, stockTransactions, optionTransactions]);
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
@@ -77,6 +206,7 @@ const Import: React.FC = () => {
       const allOptionTransactions: ParsedOptionTransaction[] = [];
       const allErrors: string[] = [];
       const allWarnings: string[] = [];
+      let firstAccountInfo: AccountInfo | undefined;
       
       // Process each file
       for (let i = 0; i < files.length; i++) {
@@ -95,6 +225,12 @@ const Import: React.FC = () => {
           if (result.success) {
             allTransactions.push(...result.transactions);
             allOptionTransactions.push(...result.optionTransactions);
+            
+            // Capture account info from first successful parse
+            if (!firstAccountInfo && result.accountInfo) {
+              firstAccountInfo = result.accountInfo;
+            }
+            
             if (result.warnings.length > 0) {
               allWarnings.push(`${file.name}: ${result.warnings.join(', ')}`);
             }
@@ -113,9 +249,50 @@ const Import: React.FC = () => {
       allTransactions.sort((a, b) => a.date.localeCompare(b.date));
       allOptionTransactions.sort((a, b) => a.date.localeCompare(b.date));
       
+      // Try to match account automatically if account info was detected
+      if (firstAccountInfo && !selectedAccount) {
+        const matchResult = matchAccount(firstAccountInfo, accounts);
+        setDetectedAccountInfo(firstAccountInfo);
+        setAccountMatchResult(matchResult);
+        
+        if (matchResult.matched && matchResult.confidence === 'exact') {
+          // Auto-select exact match
+          setSelectedAccount(matchResult.account!.id);
+          setAutoMatchedAccount(matchResult.account!.id);
+          allWarnings.push(`Auto-matched to account: ${matchResult.account!.name}`);
+        } else if (matchResult.matched && matchResult.confidence === 'partial') {
+          // Auto-select single partial match
+          setSelectedAccount(matchResult.account!.id);
+          setAutoMatchedAccount(matchResult.account!.id);
+          allWarnings.push(`Auto-matched to account: ${matchResult.account!.name} (partial match)`);
+        } else if (matchResult.suggestions.length > 0) {
+          // Show suggestions dialog
+          setShowAccountMatchDialog(true);
+        } else {
+          // No match found - show create new account dialog
+          setShowNewAccountDialog(true);
+        }
+      }
+      
+      // Only validate if we have a selected account (or will auto-select)
+      // If dialogs will be shown, validation will happen after account selection
+      const shouldValidateNow = selectedAccount ||
+        (firstAccountInfo && accountMatchResult && accountMatchResult.matched && accountMatchResult.confidence === 'exact') ||
+        (firstAccountInfo && accountMatchResult && accountMatchResult.matched && accountMatchResult.confidence === 'partial');
+      
       // Validate and check for duplicates
       const allValidationErrors: ValidationError[] = [];
       let duplicates = 0;
+      
+      if (!shouldValidateNow) {
+        // Skip validation for now - will validate after account is selected
+        setParsedTransactions(allTransactions);
+        setParsedOptionTransactions(allOptionTransactions);
+        setErrors(allErrors);
+        setWarnings(allWarnings);
+        setIsProcessing(false);
+        return;
+      }
 
       // Validate stock transactions
       allTransactions.forEach((txn, idx) => {
@@ -313,7 +490,7 @@ const Import: React.FC = () => {
       setErrors(importErrors);
     } else {
       // Success - navigate to transactions page
-      alert(`Successfully imported ${importedCount} transaction(s)`);
+      addToast({ type: 'success', title: 'Import Complete', message: `Successfully imported ${importedCount} transaction(s)` });
       navigate('/transactions');
     }
   };
@@ -342,7 +519,15 @@ const Import: React.FC = () => {
       
       {/* Account Selection */}
       <div className="bg-gray-900 rounded-lg shadow-lg p-6 border border-gray-800">
-        <h2 className="text-xl font-semibold text-white mb-4">Step 2: Select Account</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-white">Step 2: Select Account</h2>
+          {autoMatchedAccount && (
+            <div className="flex items-center gap-2 text-sm">
+              <CheckCircle className="w-4 h-4 text-green-400" />
+              <span className="text-green-400">Auto-matched</span>
+            </div>
+          )}
+        </div>
         <select
           value={selectedAccount}
           onChange={(e) => setSelectedAccount(e.target.value)}
@@ -353,6 +538,14 @@ const Import: React.FC = () => {
             <option key={account.id} value={account.id}>{account.name}</option>
           ))}
         </select>
+        {detectedAccountInfo && selectedAccount && (
+          <div className="mt-3 p-3 bg-gray-800 rounded-lg text-sm">
+            <div className="text-gray-400 mb-1">Detected from statement:</div>
+            <div className="text-white">
+              {detectedAccountInfo.broker} - {detectedAccountInfo.accountNumber.slice(-4)}
+            </div>
+          </div>
+        )}
       </div>
       
       {/* File Upload */}
@@ -627,6 +820,41 @@ const Import: React.FC = () => {
             </button>
           </div>
         </div>
+      )}
+      
+      {/* Account Matching Dialogs */}
+      {detectedAccountInfo && (
+        <>
+          <NewAccountDialog
+            isOpen={showNewAccountDialog}
+            onClose={() => setShowNewAccountDialog(false)}
+            accountInfo={detectedAccountInfo}
+            onCreateAccount={(newAccount) => {
+              addAccount(newAccount);
+              setSelectedAccount(newAccount.id);
+              setShowNewAccountDialog(false);
+            }}
+            onSelectExisting={() => {
+              setShowNewAccountDialog(false);
+              setShowAccountMatchDialog(true);
+            }}
+          />
+          
+          <AccountMatchDialog
+            isOpen={showAccountMatchDialog}
+            onClose={() => setShowAccountMatchDialog(false)}
+            accountInfo={detectedAccountInfo}
+            suggestions={accountMatchResult?.suggestions || []}
+            onSelectAccount={(accountId) => {
+              setSelectedAccount(accountId);
+              setShowAccountMatchDialog(false);
+            }}
+            onCreateNew={() => {
+              setShowAccountMatchDialog(false);
+              setShowNewAccountDialog(true);
+            }}
+          />
+        </>
       )}
     </div>
   );

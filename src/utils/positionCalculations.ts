@@ -5,7 +5,7 @@
  * Fixes Priority 2.5: Realized P/L validation
  */
 
-import type { OptionTransaction, OptionPosition } from '../types';
+import type { StockTransaction, OptionTransaction, OptionPosition } from '../types';
 
 export interface PositionUpdate {
   positionId: string;
@@ -95,46 +95,46 @@ export function calculatePartialClose(
  * 2. When BUYING: checks if there was a sell at a loss within 30 days before/after
  */
 export function detectStockWashSales(
-  transactions: any[], // StockTransaction type
+  transactions: StockTransaction[],
   targetTransactionId: string
 ): WashSaleInfo | null {
-  const targetTxn = transactions.find((t: any) => t.id === targetTransactionId);
+  const targetTxn = transactions.find(t => t.id === targetTransactionId);
   if (!targetTxn) return null;
-  
-  const targetDate = new Date(targetTxn.date || targetTxn.transactionDate);
+
+  const targetDate = new Date(targetTxn.date);
   const washStart = new Date(targetDate);
   washStart.setDate(washStart.getDate() - 30);
   const washEnd = new Date(targetDate);
   washEnd.setDate(washEnd.getDate() + 30);
-  
+
   // Case 1: User is BUYING - check if there was a recent sell at a loss for the same ticker
   if (targetTxn.action === 'buy') {
     // Find sell transactions for the same ticker within the wash sale window
-    const recentSells = transactions.filter((t: any) => {
+    const recentSells = transactions.filter(t => {
       if (t.id === targetTransactionId) return false;
       if (t.ticker !== targetTxn.ticker) return false;
       if (t.action !== 'sell') return false;
-      const txnDate = new Date(t.date || t.transactionDate);
+      const txnDate = new Date(t.date);
       return txnDate >= washStart && txnDate <= washEnd;
     });
-    
+
     // For each sell, check if it was at a loss
     for (const sellTxn of recentSells) {
       // Find buys before this sell to determine cost basis
       const priorBuys = transactions
-        .filter((t: any) => 
+        .filter(t =>
           t.ticker === sellTxn.ticker &&
           t.action === 'buy' &&
           t.id !== targetTransactionId &&
-          new Date(t.date || t.transactionDate) < new Date(sellTxn.date || sellTxn.transactionDate)
+          new Date(t.date) < new Date(sellTxn.date)
         )
-        .sort((a: any, b: any) => new Date(b.date || b.transactionDate).getTime() - new Date(a.date || a.transactionDate).getTime());
-      
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
       if (priorBuys.length > 0) {
         const costBasis = priorBuys[0].pricePerShare * sellTxn.shares;
         const saleProceeds = sellTxn.pricePerShare * sellTxn.shares;
         const loss = saleProceeds - costBasis;
-        
+
         if (loss < 0) {
           return {
             transactionId: targetTransactionId,
@@ -148,40 +148,40 @@ export function detectStockWashSales(
         }
       }
     }
-    
+
     return null;
   }
-  
+
   // Case 2: User is SELLING - check if this is a loss and if there are buys within 30 days
   if (targetTxn.action === 'sell') {
     // Find the most recent buy before this sell to determine cost basis
     const priorBuys = transactions
-      .filter((t: any) => 
+      .filter(t =>
         t.ticker === targetTxn.ticker &&
         t.action === 'buy' &&
-        new Date(t.date || t.transactionDate) < targetDate
+        new Date(t.date) < targetDate
       )
-      .sort((a: any, b: any) => new Date(b.date || b.transactionDate).getTime() - new Date(a.date || a.transactionDate).getTime());
-    
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
     if (priorBuys.length === 0) return null;
-    
+
     const costBasis = priorBuys[0].pricePerShare * targetTxn.shares;
     const saleProceeds = targetTxn.pricePerShare * targetTxn.shares;
     const loss = saleProceeds - costBasis;
-    
+
     if (loss >= 0) return null; // No loss, no wash sale
-    
+
     // Find buy transactions within the wash sale window
-    const relatedBuys = transactions.filter((t: any) => {
+    const relatedBuys = transactions.filter(t => {
       if (t.id === targetTransactionId) return false;
       if (t.ticker !== targetTxn.ticker) return false;
       if (t.action !== 'buy') return false;
-      const txnDate = new Date(t.date || t.transactionDate);
+      const txnDate = new Date(t.date);
       return txnDate >= washStart && txnDate <= washEnd;
     });
-    
+
     if (relatedBuys.length === 0) return null;
-    
+
     return {
       transactionId: targetTransactionId,
       ticker: targetTxn.ticker,
@@ -189,10 +189,10 @@ export function detectStockWashSales(
       washSalePeriodStart: washStart,
       washSalePeriodEnd: washEnd,
       hasWashSale: true,
-      relatedTransactionIds: relatedBuys.map((t: any) => t.id)
+      relatedTransactionIds: relatedBuys.map(t => t.id)
     };
   }
-  
+
   return null;
 }
 

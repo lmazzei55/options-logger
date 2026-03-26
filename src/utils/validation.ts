@@ -36,16 +36,16 @@ export const validateStockTransaction = (
       message: 'Ticker is required',
       severity: 'error'
     });
-  } else if (!/^[A-Z]+$/.test(transaction.ticker)) {
+  } else if (!/^[A-Z]+(\.[A-Z]+)?$/.test(transaction.ticker)) {
     errors.push({
       field: 'ticker',
-      message: 'Ticker must contain only uppercase letters (no numbers or special characters)',
+      message: 'Ticker must contain only uppercase letters, with an optional dot separator (e.g., BRK.B)',
       severity: 'error'
     });
-  } else if (transaction.ticker.length < 1 || transaction.ticker.length > 5) {
+  } else if (transaction.ticker.length < 1 || transaction.ticker.length > 6) {
     errors.push({
       field: 'ticker',
-      message: 'Ticker must be 1-5 characters',
+      message: 'Ticker must be 1-6 characters',
       severity: 'error'
     });
   }
@@ -154,16 +154,16 @@ export const validateOptionTransaction = (
       message: 'Ticker is required',
       severity: 'error'
     });
-  } else if (!/^[A-Z]+$/.test(transaction.ticker)) {
+  } else if (!/^[A-Z]+(\.[A-Z]+)?$/.test(transaction.ticker)) {
     errors.push({
       field: 'ticker',
-      message: 'Ticker must contain only uppercase letters (no numbers or special characters)',
+      message: 'Ticker must contain only uppercase letters, with an optional dot separator (e.g., BRK.B)',
       severity: 'error'
     });
-  } else if (transaction.ticker.length < 1 || transaction.ticker.length > 5) {
+  } else if (transaction.ticker.length < 1 || transaction.ticker.length > 6) {
     errors.push({
       field: 'ticker',
-      message: 'Ticker must be 1-5 characters',
+      message: 'Ticker must be 1-6 characters',
       severity: 'error'
     });
   }

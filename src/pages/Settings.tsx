@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { Download, Upload, Trash2, Database, AlertCircle, CheckCircle } from 'lucide-react';
+import { Download, Upload, Trash2, Database, AlertCircle, CheckCircle, RotateCcw } from 'lucide-react';
 
 const Settings: React.FC = () => {
-  const { loadMockData, clearAllData, exportData, importData, settings, updateSettings } = useAppContext();
+  const { loadMockData, clearAllData, exportData, importData, settings, updateSettings, restoreFromBackup, hasBackup } = useAppContext();
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [showConfirmMock, setShowConfirmMock] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -231,6 +231,33 @@ const Settings: React.FC = () => {
             </label>
           </div>
 
+          {/* Restore from Backup */}
+          {hasBackup && (
+            <div className="border border-yellow-700 rounded-lg p-4 bg-yellow-900/20">
+              <h3 className="font-semibold text-yellow-300 mb-2 flex items-center gap-2">
+                <RotateCcw className="w-4 h-4" />
+                Restore from Backup
+              </h3>
+              <p className="text-sm text-yellow-300/80 mb-4">
+                A backup was automatically created before the last destructive operation (clear, import, or mock data load).
+              </p>
+              <button
+                onClick={() => {
+                  const success = restoreFromBackup();
+                  if (success) {
+                    showNotification('success', 'Data restored from backup!');
+                  } else {
+                    showNotification('error', 'Failed to restore from backup.');
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Restore Backup
+              </button>
+            </div>
+          )}
+
           {/* Clear All Data */}
           <div className="border border-red-800 rounded-lg p-4 bg-red-900/20">
             <h3 className="font-semibold text-red-400 mb-2 flex items-center gap-2">
@@ -238,7 +265,7 @@ const Settings: React.FC = () => {
               Danger Zone
             </h3>
             <p className="text-sm text-red-300/80 mb-4">
-              Permanently delete all data. This action cannot be undone.
+              Permanently delete all data. A backup will be created automatically, but use this with caution.
             </p>
             {!showConfirmClear ? (
               <button

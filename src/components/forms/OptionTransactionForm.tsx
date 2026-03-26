@@ -65,7 +65,7 @@ export const OptionTransactionForm: React.FC<OptionTransactionFormProps> = ({
   // Get account cash for validation
   const accountCash = accounts.find(a => a.id === formData.accountId)?.currentCash || 0;
   
-  const handleChange = (field: string, value: any) => {
+  const handleChange = (field: string, value: string | number | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     // Clear error for this field
     if (errors[field]) {
@@ -77,23 +77,25 @@ export const OptionTransactionForm: React.FC<OptionTransactionFormProps> = ({
     }
   };
   
-  // Update option type based on strategy
+  // Update option type and action based on strategy
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    const updates: Partial<typeof formData> = {};
     if (formData.strategy === 'cash-secured-put' || formData.strategy === 'long-put') {
-      handleChange('optionType', 'put');
+      updates.optionType = 'put';
     } else if (formData.strategy === 'covered-call' || formData.strategy === 'long-call') {
-      handleChange('optionType', 'call');
+      updates.optionType = 'call';
     }
-  }, [formData.strategy]);
-  
-  // Update action based on strategy
-  useEffect(() => {
     if (formData.strategy === 'cash-secured-put' || formData.strategy === 'covered-call') {
-      handleChange('action', 'sell-to-open');
+      updates.action = 'sell-to-open';
     } else if (formData.strategy === 'long-call' || formData.strategy === 'long-put') {
-      handleChange('action', 'buy-to-open');
+      updates.action = 'buy-to-open';
+    }
+    if (Object.keys(updates).length > 0) {
+      setFormData(prev => ({ ...prev, ...updates }));
     }
   }, [formData.strategy]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   
   // Set expiration date presets
   const setExpirationPreset = (days: number) => {

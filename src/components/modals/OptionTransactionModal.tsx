@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { formatDateLocal, formatDateLocalWithOptions } from '../../utils/dateUtils';
+import { formatDateLocal } from '../../utils/dateUtils';
 import type { OptionTransaction } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { calculateAnnualizedReturn, daysUntilExpiration } from '../../utils/calculations';
@@ -45,6 +45,7 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Load transaction data if editing
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (transaction) {
       setFormData({
@@ -82,25 +83,35 @@ const OptionTransactionModal: React.FC<OptionTransactionModalProps> = ({
     }
     setErrors({});
   }, [transaction, selectedAccountId, isOpen]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Auto-fill option type and action based on strategy
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    const updates: Partial<typeof formData> = {};
     switch (formData.strategy) {
       case 'covered-call':
-        setFormData(prev => ({ ...prev, optionType: 'call', action: 'sell-to-open' }));
+        updates.optionType = 'call';
+        updates.action = 'sell-to-open';
         break;
       case 'cash-secured-put':
-        setFormData(prev => ({ ...prev, optionType: 'put', action: 'sell-to-open' }));
+        updates.optionType = 'put';
+        updates.action = 'sell-to-open';
         break;
-
       case 'long-call':
-        setFormData(prev => ({ ...prev, optionType: 'call', action: 'buy-to-open' }));
+        updates.optionType = 'call';
+        updates.action = 'buy-to-open';
         break;
       case 'long-put':
-        setFormData(prev => ({ ...prev, optionType: 'put', action: 'buy-to-open' }));
+        updates.optionType = 'put';
+        updates.action = 'buy-to-open';
         break;
     }
+    if (Object.keys(updates).length > 0) {
+      setFormData(prev => ({ ...prev, ...updates }));
+    }
   }, [formData.strategy]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const totalPremium = useMemo(() => {
     return formData.premiumPerShare * formData.contracts * 100;

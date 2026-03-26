@@ -126,33 +126,33 @@ export function sanitizeNotes(notes: string): string {
 /**
  * Validates and sanitizes a complete transaction object
  */
-export function sanitizeTransaction(transaction: any): any {
+export function sanitizeTransaction(transaction: Record<string, unknown>): Record<string, unknown> {
   return {
     ...transaction,
-    ticker: sanitizeTicker(transaction.ticker || ''),
-    date: sanitizeDate(transaction.date || ''),
-    shares: sanitizeNumber(transaction.shares || 0),
-    pricePerShare: sanitizeNumber(transaction.pricePerShare || 0),
-    fees: sanitizeNumber(transaction.fees || 0),
-    notes: sanitizeNotes(transaction.notes || ''),
+    ticker: sanitizeTicker((transaction.ticker as string) || ''),
+    date: sanitizeDate((transaction.date as string) || ''),
+    shares: sanitizeNumber((transaction.shares as string | number) || 0),
+    pricePerShare: sanitizeNumber((transaction.pricePerShare as string | number) || 0),
+    fees: sanitizeNumber((transaction.fees as string | number) || 0),
+    notes: sanitizeNotes((transaction.notes as string) || ''),
   };
 }
 
 /**
  * Validates and sanitizes a complete option transaction object
  */
-export function sanitizeOptionTransaction(transaction: any): any {
+export function sanitizeOptionTransaction(transaction: Record<string, unknown>): Record<string, unknown> {
   return {
     ...transaction,
-    ticker: sanitizeTicker(transaction.ticker || ''),
-    date: sanitizeDate(transaction.date || ''),
-    action: sanitizeOptionAction(transaction.action || ''),
-    optionType: sanitizeOptionType(transaction.optionType || ''),
-    strike: sanitizeNumber(transaction.strike || 0),
-    contracts: sanitizeNumber(transaction.contracts || 0),
-    premium: sanitizeNumber(transaction.premium || 0),
-    fees: sanitizeNumber(transaction.fees || 0),
-    expiration: sanitizeDate(transaction.expiration || ''),
-    notes: sanitizeNotes(transaction.notes || ''),
+    ticker: sanitizeTicker((transaction.ticker as string) || ''),
+    date: sanitizeDate((transaction.date as string) || ''),
+    action: sanitizeOptionAction((transaction.action as string) || ''),
+    optionType: sanitizeOptionType((transaction.optionType as string) || ''),
+    strike: sanitizeNumber((transaction.strike as string | number) || 0),
+    contracts: sanitizeNumber((transaction.contracts as string | number) || 0),
+    premium: sanitizeNumber((transaction.premium as string | number) || 0),
+    fees: sanitizeNumber((transaction.fees as string | number) || 0),
+    expiration: sanitizeDate((transaction.expiration as string) || ''),
+    notes: sanitizeNotes((transaction.notes as string) || ''),
   };
 }

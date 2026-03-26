@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { formatDateLocal } from '../utils/dateUtils';
 import { useAppContext } from '../context/AppContext';
+import { useToast } from '../components/notifications/ToastContainer';
 import {
   formatCurrency,
   daysUntilExpiration,
@@ -12,6 +13,7 @@ import type { OptionTransaction } from '../types';
 import OptionTransactionModal from '../components/modals/OptionTransactionModal';
 
 const Options: React.FC = () => {
+  const { addToast } = useToast();
   const {
     optionPositions,
     optionTransactions,
@@ -64,20 +66,20 @@ const Options: React.FC = () => {
     
     const contractsToClose = parseInt(closingContracts) || position.contracts;
     if (contractsToClose <= 0 || contractsToClose > position.contracts) {
-      alert(`Please enter a valid number of contracts (1-${position.contracts})`);
+      addToast({ type: 'error', title: 'Invalid Input', message: `Please enter a valid number of contracts (1-${position.contracts})` });
       return;
     }
-    
+
     if (closeType === 'closed') {
       // For manual close, use the entered closing price and fees
       const price = parseFloat(closingPrice);
       const fees = parseFloat(closingFees) || 0;
       if (isNaN(price) || price < 0) {
-        alert('Please enter a valid closing price per share');
+        addToast({ type: 'error', title: 'Invalid Input', message: 'Please enter a valid closing price per share' });
         return;
       }
       if (fees < 0) {
-        alert('Fees cannot be negative');
+        addToast({ type: 'error', title: 'Invalid Input', message: 'Fees cannot be negative' });
         return;
       }
       closeOptionPosition(positionId, closeType, price, fees, contractsToClose);
@@ -135,7 +137,7 @@ const Options: React.FC = () => {
     }
   };
 
-  const PositionCard = ({ position }: { position: typeof optionPositions[0] }) => {
+  const renderPositionCard = (position: typeof optionPositions[0]) => {
     const account = accounts.find(a => a.id === position.accountId);
     const daysUntil = daysUntilExpiration(position.expirationDate);
     const isExpiringSoon = daysUntil <= 7 && position.status === 'open';
@@ -395,10 +397,10 @@ const Options: React.FC = () => {
     );
   };
 
-  const PositionTable = ({ positions }: { positions: typeof optionPositions }) => {
+  const renderPositionTable = (positions: typeof optionPositions) => {
     const sortedPositions = [...positions].sort((a, b) => {
-      let aVal: any = a[tableSortField];
-      let bVal: any = b[tableSortField];
+      let aVal: string | number | undefined = a[tableSortField];
+      let bVal: string | number | undefined = b[tableSortField];
       
       if (tableSortField === 'expirationDate') {
         aVal = new Date(a.expirationDate).getTime();
@@ -410,7 +412,7 @@ const Options: React.FC = () => {
       if (typeof aVal === 'string' && typeof bVal === 'string') {
         return aVal.localeCompare(bVal) * multiplier;
       }
-      return ((aVal || 0) - (bVal || 0)) * multiplier;
+      return ((Number(aVal) || 0) - (Number(bVal) || 0)) * multiplier;
     });
 
     return (
@@ -747,11 +749,11 @@ const Options: React.FC = () => {
           {viewMode === 'card' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {openPositions.map(position => (
-                <PositionCard key={position.id} position={position} />
+                <React.Fragment key={position.id}>{renderPositionCard(position)}</React.Fragment>
               ))}
             </div>
           ) : (
-            <PositionTable positions={openPositions} />
+            renderPositionTable(openPositions)
           )}
         </div>
       )}
@@ -765,11 +767,11 @@ const Options: React.FC = () => {
           {viewMode === 'card' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {closedPositions.map(position => (
-                <PositionCard key={position.id} position={position} />
+                <React.Fragment key={position.id}>{renderPositionCard(position)}</React.Fragment>
               ))}
             </div>
           ) : (
-            <PositionTable positions={closedPositions} />
+            renderPositionTable(closedPositions)
           )}
         </div>
       )}

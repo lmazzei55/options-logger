@@ -1,6 +1,7 @@
 // import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
+import { ToastProvider } from './components/notifications/ToastContainer';
 import Layout from './components/layout/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import Dashboard from './pages/Dashboard';
@@ -16,6 +17,7 @@ import Settings from './pages/Settings';
 function App() {
   return (
     <ErrorBoundary fallbackMessage="The application encountered an unexpected error. Your data is safe in browser storage.">
+      <ToastProvider>
       <AppProvider>
         <Router>
           <ErrorBoundary fallbackMessage="An error occurred in the navigation system.">
@@ -38,6 +40,7 @@ function App() {
           </ErrorBoundary>
         </Router>
       </AppProvider>
+      </ToastProvider>
     </ErrorBoundary>
   );
 }

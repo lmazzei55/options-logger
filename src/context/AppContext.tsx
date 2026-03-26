@@ -17,7 +17,10 @@ import {
 } from '../utils/calculations';
 import { applyPremiumAdjustments } from '../utils/premiumAdjustedCalculations';
 import { generateMockData } from '../utils/mockData';
-import { detectStockWashSales, detectWashSales } from '../utils/positionCalculations';
+import { detectStockWashSales } from '../utils/positionCalculations';
+import { planOptionClose, checkOptionWashSale } from '../utils/optionClosing';
+import { useToast } from '../components/notifications/ToastContainer';
+import { applyMigrations, CURRENT_SCHEMA_VERSION } from '../utils/migrations';
 
 interface AppContextType {
   // Data
@@ -78,11 +81,15 @@ interface AppContextType {
   clearAllData: () => void;
   exportData: () => string;
   importData: (jsonData: string) => boolean;
+  restoreFromBackup: () => boolean;
+  hasBackup: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'investment-tracker-data';
+const BACKUP_KEY = 'investment-tracker-backup';
+const SAVE_DEBOUNCE_MS = 300;
 
 const defaultSettings: AppSettings = {
   theme: 'system',
@@ -106,6 +113,7 @@ interface AppProviderProps {
 }
 
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
+  const { addToast } = useToast();
   const [accounts, setAccounts] = useState<InvestmentAccount[]>([]);
   const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>([]);
   const [optionTransactions, setOptionTransactions] = useState<OptionTransaction[]>([]);
@@ -124,33 +132,69 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     ? applyPremiumAdjustments(baseStockPositions, optionTransactions)
     : baseStockPositions;
   
-  // Load data from localStorage on mount
+  const [hasBackup, setHasBackup] = useState(false);
+
+  // Load data from localStorage on mount (with migration support)
   useEffect(() => {
+    setHasBackup(!!localStorage.getItem(BACKUP_KEY));
     const savedData = localStorage.getItem(STORAGE_KEY);
     if (savedData) {
       try {
-        const parsed = JSON.parse(savedData);
-        setAccounts(parsed.accounts || []);
-        setStockTransactions(parsed.stockTransactions || []);
-        setOptionTransactions(parsed.optionTransactions || []);
-        setTags(parsed.tags || []);
-        setTemplates(parsed.templates || []);
-        setSettings({ ...defaultSettings, ...parsed.settings });
-        setSelectedAccountId(parsed.selectedAccountId || null);
+        const raw = JSON.parse(savedData);
+        const parsed = applyMigrations(raw);
+        setAccounts((parsed.accounts as InvestmentAccount[]) || []);
+        setStockTransactions((parsed.stockTransactions as StockTransaction[]) || []);
+        setOptionTransactions((parsed.optionTransactions as OptionTransaction[]) || []);
+        setTags((parsed.tags as Tag[]) || []);
+        setTemplates((parsed.templates as TransactionTemplate[]) || []);
+        setSettings({ ...defaultSettings, ...(parsed.settings as Partial<AppSettings>) });
+        setSelectedAccountId((parsed.selectedAccountId as string | null) || null);
+        // Re-save if migration bumped the version
+        if (raw.schemaVersion !== CURRENT_SCHEMA_VERSION) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        }
       } catch (error) {
         console.error('Failed to load data from localStorage:', error);
       }
     }
   }, []);
   
-  // Save data to localStorage whenever it changes (skip initial render)
+  // Debounced save to localStorage (skip initial render, flush on unload)
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDataRef = useRef<string | null>(null);
+
+  const flushSave = useCallback(() => {
+    if (pendingDataRef.current !== null) {
+      try {
+        localStorage.setItem(STORAGE_KEY, pendingDataRef.current);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+          console.error('localStorage quota exceeded. Data not saved. Consider exporting your data as a backup.');
+        } else {
+          console.error('Failed to save data to localStorage:', error);
+        }
+      }
+      pendingDataRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => flushSave();
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      flushSave();
+    };
+  }, [flushSave]);
+
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
       return;
     }
-    
+
     const dataToSave = {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       accounts,
       stockTransactions,
       optionTransactions,
@@ -159,10 +203,17 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       settings,
       selectedAccountId
     };
-    console.log('Saving to localStorage:', dataToSave);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
-    console.log('Data saved successfully');
-  }, [accounts, stockTransactions, optionTransactions, tags, templates, settings, selectedAccountId]);
+
+    pendingDataRef.current = JSON.stringify(dataToSave);
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      flushSave();
+      saveTimeoutRef.current = null;
+    }, SAVE_DEBOUNCE_MS);
+  }, [accounts, stockTransactions, optionTransactions, tags, templates, settings, selectedAccountId, flushSave]);
   
   // ==========================================
   // ACCOUNT ACTIONS
@@ -226,24 +277,24 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     
     if (washSaleInfo && washSaleInfo.hasWashSale) {
       if (transaction.action === 'buy') {
-        alert(
-          `⚠️ Potential Wash Sale Detected\n\n` +
-          `You are buying ${transaction.ticker} within 30 days of selling it at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
-          `This may trigger wash sale rules, which could disallow the loss deduction for tax purposes.\n\n` +
-          `The transaction has been added, but please consult a tax professional.`
-        );
+        addToast({
+          type: 'warning',
+          title: 'Potential Wash Sale Detected',
+          message: `You are buying ${transaction.ticker} within 30 days of selling it at a loss of $${washSaleInfo.lossAmount.toFixed(2)}. This may trigger wash sale rules. Please consult a tax professional.`,
+          duration: 10000
+        });
       } else if (transaction.action === 'sell') {
-        alert(
-          `⚠️ Potential Wash Sale Detected\n\n` +
-          `You sold ${transaction.ticker} at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
-          `You have ${washSaleInfo.relatedTransactionIds.length} related buy transaction(s) within 30 days.\n\n` +
-          `This may trigger wash sale rules, which could disallow the loss deduction for tax purposes.`
-        );
+        addToast({
+          type: 'warning',
+          title: 'Potential Wash Sale Detected',
+          message: `You sold ${transaction.ticker} at a loss of $${washSaleInfo.lossAmount.toFixed(2)} with ${washSaleInfo.relatedTransactionIds.length} related buy(s) within 30 days. This may trigger wash sale rules.`,
+          duration: 10000
+        });
       }
     }
     
     return newTransaction.id;
-  }, [stockTransactions]);
+  }, [stockTransactions, addToast]);
   
   const updateStockTransaction = (id: string, updates: Partial<StockTransaction>) => {
     setStockTransactions(prev => {
@@ -380,181 +431,37 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const closeOptionPosition = useCallback((
     positionId: string,
     closeType: 'closed' | 'expired' | 'assigned',
-    closePrice?: number, // price per share for buy-to-close / sell-to-close
-    fees?: number, // fees for closing transaction
-    contractsToClose?: number // number of contracts to close (for partial close)
+    closePrice?: number,
+    fees?: number,
+    contractsToClose?: number
   ) => {
-    // We need current state, so we use functional updates
-    // First, find the position and original transaction
-    const position = calculateOptionPositions(optionTransactions).find(p => p.id === positionId);
-    if (!position) return;
-    
-    const openTxn = optionTransactions.find(t =>
-      t.ticker === position.ticker &&
-      t.strikePrice === position.strikePrice &&
-      t.expirationDate === position.expirationDate &&
-      t.accountId === position.accountId &&
-      (t.action === 'sell-to-open' || t.action === 'buy-to-open')
+    const result = planOptionClose(
+      { positionId, closeType, closePrice, fees, contractsToClose },
+      optionTransactions
     );
-    if (!openTxn) return;
-    
-    const today = new Date().toISOString().split('T')[0];
-    const isSeller = openTxn.action === 'sell-to-open';
-    const closingAction = isSeller ? 'buy-to-close' : 'sell-to-close';
-    
-    console.log('=== CLOSE POSITION DEBUG ===');
-    console.log('Position:', position);
-    console.log('Open transaction:', openTxn);
-    console.log('Is seller?', isSeller);
-    console.log('Closing action:', closingAction);
-    console.log('Close type:', closeType);
-    
-    // Determine how many contracts to close
-    const contractsClosing = contractsToClose || position.contracts;
-    if (contractsClosing > position.contracts) {
-      console.error('Cannot close more contracts than available');
-      return;
-    }
-    
-    // Calculate realized P&L
-    const closeFees = fees || 0;
-    let realizedPL = 0;
-    let closePremiumPerShare = closePrice || 0;
-    let closeTotalPremium = closePremiumPerShare * contractsClosing * 100;
-    
-    // Calculate proportional open premium and fees
-    const proportionClosing = contractsClosing / openTxn.contracts;
-    const proportionalOpenPremium = openTxn.totalPremium * proportionClosing;
-    const proportionalOpenFees = openTxn.fees * proportionClosing;
-    
-    if (closeType === 'expired') {
-      // Option expired worthless
-      closePremiumPerShare = 0;
-      closeTotalPremium = 0;
-      if (isSeller) {
-        // Seller keeps proportional premium
-        realizedPL = proportionalOpenPremium - proportionalOpenFees;
-      } else {
-        // Buyer loses proportional premium
-        realizedPL = -(proportionalOpenPremium + proportionalOpenFees);
-      }
-    } else if (closeType === 'assigned') {
-      // Option was assigned - premium already received/paid, now stock changes hands
-      closePremiumPerShare = 0;
-      closeTotalPremium = 0;
-      if (isSeller) {
-        // Seller keeps the proportional premium received at open
-        realizedPL = proportionalOpenPremium - proportionalOpenFees;
-      } else {
-        // Buyer paid proportional premium to open, now exercises
-        realizedPL = -(proportionalOpenPremium + proportionalOpenFees);
-      }
-    } else {
-      // Closed manually (bought/sold to close)
-      if (isSeller) {
-        // Sold to open, bought to close
-        // P&L = proportional premium received - premium paid to close - proportional open fees - close fees
-        realizedPL = proportionalOpenPremium - closeTotalPremium - proportionalOpenFees - closeFees;
-      } else {
-        // Bought to open, sold to close
-        // P&L = premium received on close - proportional premium paid to open - proportional open fees - close fees
-        realizedPL = closeTotalPremium - proportionalOpenPremium - proportionalOpenFees - closeFees;
-      }
-    }
-    
-    // Create the closing option transaction
-    console.log('Creating closing transaction with action:', closingAction);
-    const closingOptionTxn: Omit<OptionTransaction, 'id'> = {
-      accountId: position.accountId,
-      ticker: position.ticker,
-      optionType: position.optionType,
-      strikePrice: position.strikePrice,
-      expirationDate: position.expirationDate,
-      action: closingAction as OptionTransaction['action'],
-      contracts: contractsClosing,
-      premiumPerShare: closePremiumPerShare,
-      totalPremium: closeTotalPremium,
-      fees: closeFees,
-      transactionDate: today,
-      strategy: position.strategy,
-      status: closeType,
-      closeDate: today,
-      realizedPL: realizedPL,
-      collateralRequired: openTxn.collateralRequired,
-      collateralReleased: true,
-      notes: closeType === 'expired'
-        ? `${contractsClosing} contract(s) expired worthless`
-        : closeType === 'assigned'
-          ? `${contractsClosing} contract(s) assigned - ${position.optionType === 'put' ? 'bought' : 'sold'} ${contractsClosing * 100} shares of ${position.ticker} at $${position.strikePrice}`
-          : `Closed ${contractsClosing} contract(s) at $${closePremiumPerShare}/share`
-    };
-    
-    // Add the closing option transaction (this handles cash for the premium)
-    console.log('Closing transaction object:', closingOptionTxn);
-    const newTxnId = addOptionTransaction(closingOptionTxn);
-    console.log('New transaction ID:', newTxnId);
-    
+    if (!result) return;
+
+    // Add the closing option transaction (handles cash for premium)
+    const newTxnId = addOptionTransaction(result.closingOptionTxn);
+
     // Check for wash sale if this was a loss
-    if (realizedPL < 0) {
-      const allTransactions = [...optionTransactions, { ...closingOptionTxn, id: newTxnId }];
-      const washSaleInfo = detectWashSales(allTransactions, newTxnId);
-      
-      if (washSaleInfo && washSaleInfo.hasWashSale) {
-        alert(
-          `⚠️ Potential Wash Sale Detected\n\n` +
-          `You closed ${position.ticker} at a loss of $${Math.abs(realizedPL).toFixed(2)}.\n\n` +
-          `You have ${washSaleInfo.relatedTransactionIds.length} related transaction(s) within 30 days before/after this sale.\n\n` +
-          `This may trigger wash sale rules, which could disallow the loss deduction for tax purposes.`
-        );
-      }
+    const washSale = checkOptionWashSale(
+      newTxnId, result.closingOptionTxn, optionTransactions, result.realizedPL
+    );
+    if (washSale.hasWashSale) {
+      addToast({
+        type: 'warning',
+        title: 'Potential Wash Sale Detected',
+        message: `You closed ${result.closingOptionTxn.ticker} at a loss of $${washSale.lossAmount.toFixed(2)} with ${washSale.relatedCount} related transaction(s) within 30 days. This may trigger wash sale rules.`,
+        duration: 10000
+      });
     }
-    
-    // If ASSIGNED, create the corresponding stock transaction
-    if (closeType === 'assigned') {
-      const sharesCount = contractsClosing * 100;
-      const stockPrice = position.strikePrice;
-      const stockTotal = sharesCount * stockPrice;
-      
-      if (position.optionType === 'put') {
-        // Put assigned = obligation to BUY stock at strike price
-        // Whether you sold the put (CSP) or bought the put and exercised
-        if (isSeller) {
-          // CSP assigned: you must buy shares at strike
-          const stockTxn: Omit<StockTransaction, 'id'> = {
-            accountId: position.accountId,
-            ticker: position.ticker,
-            action: 'buy',
-            shares: sharesCount,
-            pricePerShare: stockPrice,
-            totalAmount: stockTotal,
-            fees: 0,
-            date: today,
-            notes: `Assigned from ${position.strategy}: ${contractsClosing} put contract(s) at $${position.strikePrice} strike`
-          };
-          addStockTransaction(stockTxn);
-        }
-        // If buyer exercised a put, they sell shares (less common, skip for now)
-      } else {
-        // Call assigned
-        if (isSeller) {
-          // Covered call assigned: you must sell shares at strike
-          const stockTxn: Omit<StockTransaction, 'id'> = {
-            accountId: position.accountId,
-            ticker: position.ticker,
-            action: 'sell',
-            shares: sharesCount,
-            pricePerShare: stockPrice,
-            totalAmount: stockTotal,
-            fees: 0,
-            date: today,
-            notes: `Assigned from ${position.strategy}: ${contractsClosing} call contract(s) at $${position.strikePrice} strike`
-          };
-          addStockTransaction(stockTxn);
-        }
-        // If buyer exercised a call, they buy shares
-      }
+
+    // If assigned, create the corresponding stock transaction
+    if (result.stockTxn) {
+      addStockTransaction(result.stockTxn);
     }
-  }, [optionTransactions, addOptionTransaction, addStockTransaction]);
+  }, [optionTransactions, addOptionTransaction, addStockTransaction, addToast]);
   
   // ==========================================
   // TAG ACTIONS
@@ -601,8 +508,51 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   // ==========================================
   // DATA MANAGEMENT
   // ==========================================
-  
-  const loadMockData = () => {
+
+  /** Save current state to the backup key before destructive operations */
+  const createBackup = useCallback(() => {
+    try {
+      const backup = {
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        accounts,
+        stockTransactions,
+        optionTransactions,
+        tags,
+        templates,
+        settings,
+        selectedAccountId,
+        backupDate: new Date().toISOString()
+      };
+      localStorage.setItem(BACKUP_KEY, JSON.stringify(backup));
+      setHasBackup(true);
+    } catch (error) {
+      console.error('Failed to create backup:', error);
+    }
+  }, [accounts, stockTransactions, optionTransactions, tags, templates, settings, selectedAccountId]);
+
+  const restoreFromBackup = useCallback((): boolean => {
+    const backupData = localStorage.getItem(BACKUP_KEY);
+    if (!backupData) return false;
+    try {
+      const parsed = JSON.parse(backupData);
+      setAccounts(parsed.accounts || []);
+      setStockTransactions(parsed.stockTransactions || []);
+      setOptionTransactions(parsed.optionTransactions || []);
+      setTags(parsed.tags || []);
+      setTemplates(parsed.templates || []);
+      setSettings({ ...defaultSettings, ...parsed.settings });
+      setSelectedAccountId(parsed.selectedAccountId || null);
+      addToast({ type: 'success', title: 'Backup Restored', message: `Restored from backup created at ${parsed.backupDate || 'unknown time'}` });
+      return true;
+    } catch (error) {
+      console.error('Failed to restore from backup:', error);
+      addToast({ type: 'error', title: 'Restore Failed', message: 'Could not restore from backup.' });
+      return false;
+    }
+  }, [addToast]);
+
+  const loadMockData = useCallback(() => {
+    createBackup();
     const mockData = generateMockData();
     setAccounts(mockData.accounts);
     setStockTransactions(mockData.stockTransactions);
@@ -610,9 +560,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     setTags(mockData.tags);
     setTemplates(mockData.templates);
     setSelectedAccountId(null);
-  };
-  
-  const clearAllData = () => {
+  }, [createBackup]);
+
+  const clearAllData = useCallback(() => {
+    createBackup();
     setAccounts([]);
     setStockTransactions([]);
     setOptionTransactions([]);
@@ -620,10 +571,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     setTemplates([]);
     setSettings(defaultSettings);
     setSelectedAccountId(null);
-  };
-  
+  }, [createBackup]);
+
   const exportData = (): string => {
     return JSON.stringify({
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       accounts,
       stockTransactions,
       optionTransactions,
@@ -634,37 +586,45 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       version: '1.0.0'
     }, null, 2);
   };
-  
-  const importData = (jsonData: string): boolean => {
+
+  const importData = useCallback((jsonData: string): boolean => {
     try {
       const parsed = JSON.parse(jsonData);
-      
+
       // Validate the structure
       if (!parsed || typeof parsed !== 'object') {
         throw new Error('Invalid data format');
       }
-      
-      const importAccounts = parsed.accounts || [];
-      const importStockTxns = parsed.stockTransactions || [];
-      const importOptionTxns = parsed.optionTransactions || [];
-      
+
+      const importAccounts: InvestmentAccount[] = parsed.accounts || [];
+      const importStockTxns: StockTransaction[] = parsed.stockTransactions || [];
+      const importOptionTxns: OptionTransaction[] = parsed.optionTransactions || [];
+
+      // Build account ID set for referential integrity checks
+      const accountIds = new Set(importAccounts.map(a => a.id));
+
       // Validate all stock transactions
       const stockErrors: string[] = [];
       for (let i = 0; i < importStockTxns.length; i++) {
         const txn = importStockTxns[i];
-        
+
         // Check required fields
         if (!txn.id || !txn.accountId || !txn.ticker || !txn.date) {
           stockErrors.push(`Stock transaction ${i + 1}: Missing required fields`);
           continue;
         }
-        
+
+        // Referential integrity: accountId must exist in imported accounts
+        if (!accountIds.has(txn.accountId)) {
+          stockErrors.push(`Stock transaction ${i + 1} (${txn.ticker}): References non-existent account ${txn.accountId}`);
+        }
+
         // Validate date format
         const date = new Date(txn.date);
         if (isNaN(date.getTime())) {
           stockErrors.push(`Stock transaction ${i + 1} (${txn.ticker}): Invalid date format`);
         }
-        
+
         // Validate numeric fields
         if (typeof txn.shares !== 'number' || txn.shares <= 0) {
           stockErrors.push(`Stock transaction ${i + 1} (${txn.ticker}): Invalid shares`);
@@ -673,18 +633,23 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
           stockErrors.push(`Stock transaction ${i + 1} (${txn.ticker}): Invalid price`);
         }
       }
-      
+
       // Validate all option transactions
       const optionErrors: string[] = [];
       for (let i = 0; i < importOptionTxns.length; i++) {
         const txn = importOptionTxns[i];
-        
+
         // Check required fields
         if (!txn.id || !txn.accountId || !txn.ticker || !txn.transactionDate || !txn.expirationDate) {
           optionErrors.push(`Option transaction ${i + 1}: Missing required fields`);
           continue;
         }
-        
+
+        // Referential integrity: accountId must exist in imported accounts
+        if (!accountIds.has(txn.accountId)) {
+          optionErrors.push(`Option transaction ${i + 1} (${txn.ticker}): References non-existent account ${txn.accountId}`);
+        }
+
         // Validate date formats
         const txnDate = new Date(txn.transactionDate);
         const expDate = new Date(txn.expirationDate);
@@ -694,7 +659,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         if (isNaN(expDate.getTime())) {
           optionErrors.push(`Option transaction ${i + 1} (${txn.ticker}): Invalid expiration date`);
         }
-        
+
         // Validate numeric fields
         if (typeof txn.contracts !== 'number' || txn.contracts <= 0) {
           optionErrors.push(`Option transaction ${i + 1} (${txn.ticker}): Invalid contracts`);
@@ -703,13 +668,16 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
           optionErrors.push(`Option transaction ${i + 1} (${txn.ticker}): Invalid strike price`);
         }
       }
-      
-      // If there are any validation errors, throw them
+
+      // If there are any validation errors, throw them (no state was mutated)
       const allErrors = [...stockErrors, ...optionErrors];
       if (allErrors.length > 0) {
         throw new Error(`Import validation failed:\n${allErrors.slice(0, 5).join('\n')}${allErrors.length > 5 ? `\n...and ${allErrors.length - 5} more errors` : ''}`);
       }
-      
+
+      // Backup current state before overwriting
+      createBackup();
+
       // All validation passed, import the data
       setAccounts(importAccounts);
       setStockTransactions(importStockTxns);
@@ -722,10 +690,15 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       return true;
     } catch (error) {
       console.error('Failed to import data:', error);
-      alert(`Failed to import data: ${error instanceof Error ? error.message : String(error)}`);
+      addToast({
+        type: 'error',
+        title: 'Import Failed',
+        message: error instanceof Error ? error.message : String(error),
+        duration: 10000
+      });
       return false;
     }
-  };
+  }, [addToast, createBackup]);
   
   const value: AppContextType = {
     accounts,
@@ -758,7 +731,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     loadMockData,
     clearAllData,
     exportData,
-    importData
+    importData,
+    restoreFromBackup,
+    hasBackup
   };
   
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

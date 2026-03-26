@@ -11,10 +11,18 @@ import type {
 
 // Generate unique IDs
 export const generateId = (): string => {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return crypto.randomUUID();
 };
 
-// Calculate stock positions from transactions
+// A single tax lot representing a purchase at a specific price
+interface TaxLot {
+  shares: number;
+  pricePerShare: number;
+  date: string;
+  transactionId: string;
+}
+
+// Calculate stock positions from transactions using FIFO lot tracking
 export const calculateStockPositions = (
   transactions: StockTransaction[],
   accountId?: string
@@ -23,7 +31,9 @@ export const calculateStockPositions = (
     ? transactions.filter(t => t.accountId === accountId)
     : transactions;
 
-  const positionMap = new Map<string, StockPosition>();
+  // Track lots per position key for FIFO
+  const lotsMap = new Map<string, TaxLot[]>();
+  const metaMap = new Map<string, { firstPurchaseDate: string; lastTransactionDate: string; transactionIds: string[] }>();
 
   // Sort transactions by date
   const sortedTransactions = [...filteredTransactions].sort(
@@ -32,73 +42,74 @@ export const calculateStockPositions = (
 
   sortedTransactions.forEach(transaction => {
     const key = `${transaction.accountId}-${transaction.ticker}`;
-    const existing = positionMap.get(key);
+    const lots = lotsMap.get(key) || [];
+    const meta = metaMap.get(key) || { firstPurchaseDate: transaction.date, lastTransactionDate: transaction.date, transactionIds: [] };
 
-    if (!existing) {
-      // New position
-      if (transaction.action === 'buy' || transaction.action === 'transfer-in') {
-        positionMap.set(key, {
-          ticker: transaction.ticker,
-          accountId: transaction.accountId,
-          shares: transaction.shares,
-          averageCostBasis: transaction.pricePerShare,
-          totalCostBasis: transaction.totalAmount,
-          firstPurchaseDate: transaction.date,
-          lastTransactionDate: transaction.date,
-          transactionIds: [transaction.id]
-        });
-      }
-    } else {
-      // Update existing position
-      const updatedTransactionIds = [...existing.transactionIds, transaction.id];
-      
-      if (transaction.action === 'buy' || transaction.action === 'transfer-in') {
-        const newShares = existing.shares + transaction.shares;
-        const newTotalCost = existing.totalCostBasis + transaction.totalAmount;
-        const newAvgCost = newTotalCost / newShares;
+    meta.lastTransactionDate = transaction.date;
+    meta.transactionIds = [...meta.transactionIds, transaction.id];
 
-        positionMap.set(key, {
-          ...existing,
-          shares: newShares,
-          averageCostBasis: newAvgCost,
-          totalCostBasis: newTotalCost,
-          lastTransactionDate: transaction.date,
-          transactionIds: updatedTransactionIds
-        });
-      } else if (transaction.action === 'sell' || transaction.action === 'transfer-out') {
-        const newShares = existing.shares - transaction.shares;
-        const costReduction = existing.averageCostBasis * transaction.shares;
-        const newTotalCost = existing.totalCostBasis - costReduction;
-
-        if (newShares > 0) {
-          positionMap.set(key, {
-            ...existing,
-            shares: newShares,
-            totalCostBasis: newTotalCost,
-            lastTransactionDate: transaction.date,
-            transactionIds: updatedTransactionIds
-          });
+    if (transaction.action === 'buy' || transaction.action === 'transfer-in') {
+      lots.push({
+        shares: transaction.shares,
+        pricePerShare: transaction.pricePerShare,
+        date: transaction.date,
+        transactionId: transaction.id
+      });
+      lotsMap.set(key, lots);
+      metaMap.set(key, meta);
+    } else if (transaction.action === 'sell' || transaction.action === 'transfer-out') {
+      // FIFO: consume oldest lots first
+      let sharesToSell = transaction.shares;
+      while (sharesToSell > 0 && lots.length > 0) {
+        const oldest = lots[0];
+        if (oldest.shares <= sharesToSell) {
+          sharesToSell -= oldest.shares;
+          lots.shift();
         } else {
-          // Position closed
-          positionMap.delete(key);
+          oldest.shares -= sharesToSell;
+          sharesToSell = 0;
         }
-      } else if (transaction.action === 'split' && transaction.splitRatio) {
-        // Handle stock split
-        const [newShares, oldShares] = transaction.splitRatio.split(':').map(Number);
-        const splitMultiplier = newShares / oldShares;
-        
-        positionMap.set(key, {
-          ...existing,
-          shares: existing.shares * splitMultiplier,
-          averageCostBasis: existing.averageCostBasis / splitMultiplier,
-          lastTransactionDate: transaction.date,
-          transactionIds: updatedTransactionIds
-        });
       }
+      lotsMap.set(key, lots);
+      metaMap.set(key, meta);
+    } else if (transaction.action === 'split' && transaction.splitRatio) {
+      const [newShares, oldShares] = transaction.splitRatio.split(':').map(Number);
+      const splitMultiplier = newShares / oldShares;
+
+      for (const lot of lots) {
+        lot.shares *= splitMultiplier;
+        lot.pricePerShare /= splitMultiplier;
+      }
+      lotsMap.set(key, lots);
+      metaMap.set(key, meta);
     }
   });
 
-  return Array.from(positionMap.values());
+  // Build positions from remaining lots
+  const positions: StockPosition[] = [];
+  for (const [key, lots] of lotsMap.entries()) {
+    if (lots.length === 0) continue;
+
+    const meta = metaMap.get(key)!;
+    const totalShares = lots.reduce((sum, lot) => sum + lot.shares, 0);
+    const totalCostBasis = lots.reduce((sum, lot) => sum + lot.shares * lot.pricePerShare, 0);
+    const separatorIndex = key.lastIndexOf('-');
+    const accountIdPart = key.slice(0, separatorIndex);
+    const ticker = key.slice(separatorIndex + 1);
+
+    positions.push({
+      ticker,
+      accountId: accountIdPart,
+      shares: totalShares,
+      averageCostBasis: totalCostBasis / totalShares,
+      totalCostBasis,
+      firstPurchaseDate: meta.firstPurchaseDate,
+      lastTransactionDate: meta.lastTransactionDate,
+      transactionIds: meta.transactionIds
+    });
+  }
+
+  return positions;
 };
 
 // Calculate option positions from transactions
@@ -402,25 +413,45 @@ export const calculateStockAnalytics = (
     ? transactions.filter(t => t.accountId === accountId)
     : transactions;
 
-  // Calculate realized P&L using volume-weighted average cost basis
-  const sellTransactions = filteredTransactions.filter(t => t.action === 'sell');
-  const totalRealizedPL = sellTransactions.reduce((sum, sell) => {
-    // Find corresponding buy transactions for same ticker and account
-    const buys = filteredTransactions.filter(
-      t => t.ticker === sell.ticker && t.accountId === sell.accountId && t.action === 'buy' && t.date <= sell.date
-    );
-    
-    if (buys.length > 0) {
-      // Use volume-weighted average cost basis
-      const totalBuyShares = buys.reduce((s, b) => s + b.shares, 0);
-      const totalBuyCost = buys.reduce((s, b) => s + (b.pricePerShare * b.shares), 0);
-      const weightedAvgPrice = totalBuyShares > 0 ? totalBuyCost / totalBuyShares : 0;
-      const pl = (sell.pricePerShare - weightedAvgPrice) * sell.shares - (sell.fees || 0);
-      return sum + pl;
+  // Calculate realized P&L using FIFO lot matching
+  // Build FIFO lots per ticker+account, consume on sells to compute P&L
+  const fifoLots = new Map<string, TaxLot[]>();
+  const sortedForPL = [...filteredTransactions].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+  let totalRealizedPL = 0;
+
+  for (const txn of sortedForPL) {
+    const key = `${txn.accountId}-${txn.ticker}`;
+    const lots = fifoLots.get(key) || [];
+
+    if (txn.action === 'buy' || txn.action === 'transfer-in') {
+      lots.push({ shares: txn.shares, pricePerShare: txn.pricePerShare, date: txn.date, transactionId: txn.id });
+      fifoLots.set(key, lots);
+    } else if (txn.action === 'sell') {
+      let sharesToSell = txn.shares;
+      while (sharesToSell > 0 && lots.length > 0) {
+        const oldest = lots[0];
+        const sharesFromLot = Math.min(oldest.shares, sharesToSell);
+        const costBasis = sharesFromLot * oldest.pricePerShare;
+        const proceeds = sharesFromLot * txn.pricePerShare;
+        totalRealizedPL += proceeds - costBasis;
+
+        oldest.shares -= sharesFromLot;
+        sharesToSell -= sharesFromLot;
+        if (oldest.shares <= 0) lots.shift();
+      }
+      totalRealizedPL -= (txn.fees || 0);
+      fifoLots.set(key, lots);
+    } else if (txn.action === 'split' && txn.splitRatio) {
+      const [newShares, oldShares] = txn.splitRatio.split(':').map(Number);
+      const splitMultiplier = newShares / oldShares;
+      for (const lot of lots) {
+        lot.shares *= splitMultiplier;
+        lot.pricePerShare /= splitMultiplier;
+      }
     }
-    
-    return sum;
-  }, 0);
+  }
 
   const holdingPeriods = filteredPositions.map(p => {
     const first = new Date(p.firstPurchaseDate).getTime();

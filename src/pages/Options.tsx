@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { formatDateLocal } from '../utils/dateUtils';
 import { useAppContext } from '../context/AppContext';
+import { useToast } from '../components/notifications/ToastContainer';
 import {
   formatCurrency,
   daysUntilExpiration,
@@ -12,6 +13,7 @@ import type { OptionTransaction } from '../types';
 import OptionTransactionModal from '../components/modals/OptionTransactionModal';
 
 const Options: React.FC = () => {
+  const { addToast } = useToast();
   const {
     optionPositions,
     optionTransactions,
@@ -64,20 +66,20 @@ const Options: React.FC = () => {
     
     const contractsToClose = parseInt(closingContracts) || position.contracts;
     if (contractsToClose <= 0 || contractsToClose > position.contracts) {
-      alert(`Please enter a valid number of contracts (1-${position.contracts})`);
+      addToast({ type: 'error', title: 'Invalid Input', message: `Please enter a valid number of contracts (1-${position.contracts})` });
       return;
     }
-    
+
     if (closeType === 'closed') {
       // For manual close, use the entered closing price and fees
       const price = parseFloat(closingPrice);
       const fees = parseFloat(closingFees) || 0;
       if (isNaN(price) || price < 0) {
-        alert('Please enter a valid closing price per share');
+        addToast({ type: 'error', title: 'Invalid Input', message: 'Please enter a valid closing price per share' });
         return;
       }
       if (fees < 0) {
-        alert('Fees cannot be negative');
+        addToast({ type: 'error', title: 'Invalid Input', message: 'Fees cannot be negative' });
         return;
       }
       closeOptionPosition(positionId, closeType, price, fees, contractsToClose);

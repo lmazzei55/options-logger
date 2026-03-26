@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { StockTransaction } from '../../types';
 import { useAppContext } from '../../context/AppContext';
-import { detectStockWashSales } from '../../utils/positionCalculations';
 import Modal from '../common/Modal';
 import { sanitizeTicker, sanitizeNotes } from '../../utils/sanitization';
 
@@ -27,7 +26,6 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
     accounts,
     selectedAccountId,
     stockPositions,
-    stockTransactions,
     addStockTransaction,
     updateStockTransaction
   } = useAppContext();
@@ -181,26 +179,8 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
     if (transaction) {
       updateStockTransaction(transaction.id, transactionData);
     } else {
-      const newTxnId = addStockTransaction(transactionData);
-      
-      // Check for wash sale
-      const allTransactions = [...stockTransactions, { ...transactionData, id: newTxnId }];
-      const washSaleInfo = detectStockWashSales(allTransactions, newTxnId);
-      
-      if (washSaleInfo && washSaleInfo.hasWashSale) {
-        const isBuy = formData.action === 'buy';
-        const message = isBuy
-          ? `⚠️ Potential Wash Sale Detected\n\n` +
-            `You are buying ${formData.ticker} within 30 days of selling it at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
-            `This may disallow the loss deduction for tax purposes under IRS wash sale rules.\n\n` +
-            `You have ${washSaleInfo.relatedTransactionIds.length} related sell transaction(s) within 30 days.`
-          : `⚠️ Potential Wash Sale Detected\n\n` +
-            `You sold ${formData.ticker} at a loss of $${washSaleInfo.lossAmount.toFixed(2)}.\n\n` +
-            `You have ${washSaleInfo.relatedTransactionIds.length} related buy transaction(s) within 30 days before/after this sale.\n\n` +
-            `This may disallow the loss deduction for tax purposes under IRS wash sale rules.`;
-        
-        alert(message);
-      }
+      // Wash sale detection is handled by AppContext.addStockTransaction
+      addStockTransaction(transactionData);
     }
 
     onClose();

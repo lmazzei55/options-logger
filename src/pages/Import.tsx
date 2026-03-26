@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
+import { useToast } from '../components/notifications/ToastContainer';
 import { getAvailableBrokers, getParser, type ParsedTransaction, type ParsedOptionTransaction, type AccountInfo } from '../utils/parsers';
 import { extractTextFromPDF } from '../utils/pdfExtractor';
 import {
@@ -17,6 +18,7 @@ import AccountMatchDialog from '../components/modals/AccountMatchDialog';
 
 const Import: React.FC = () => {
   const { accounts, stockTransactions, optionTransactions, addStockTransaction, addOptionTransaction, addAccount } = useAppContext();
+  const { addToast } = useToast();
   const navigate = useNavigate();
   
   const [selectedBroker, setSelectedBroker] = useState('');
@@ -488,7 +490,7 @@ const Import: React.FC = () => {
       setErrors(importErrors);
     } else {
       // Success - navigate to transactions page
-      alert(`Successfully imported ${importedCount} transaction(s)`);
+      addToast({ type: 'success', title: 'Import Complete', message: `Successfully imported ${importedCount} transaction(s)` });
       navigate('/transactions');
     }
   };

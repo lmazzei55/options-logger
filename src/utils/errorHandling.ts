@@ -7,7 +7,7 @@
 export interface AppError {
   code: string;
   message: string;
-  details?: any;
+  details?: unknown;
   timestamp: string;
 }
 
@@ -48,7 +48,7 @@ export const ErrorCodes = {
 export function createError(
   code: string,
   message: string,
-  details?: any
+  details?: unknown
 ): AppError {
   return {
     code,
@@ -66,8 +66,8 @@ export function formatErrorMessage(error: AppError | Error | unknown): string {
   
   if (typeof error === 'string') return error;
   
-  if ('message' in (error as any)) {
-    return (error as any).message;
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    return (error as { message: string }).message;
   }
   
   return 'An unknown error occurred';
@@ -102,7 +102,7 @@ export function handleError(
 /**
  * Wraps an async function with error handling
  */
-export function withErrorHandling<T extends (...args: any[]) => Promise<any>>(
+export function withErrorHandling<T extends (...args: unknown[]) => Promise<unknown>>(
   fn: T,
   context?: string
 ): T {
@@ -161,7 +161,7 @@ export async function retryWithBackoff<T>(
   maxRetries: number = 3,
   initialDelay: number = 1000
 ): Promise<T> {
-  let lastError: any;
+  let lastError: unknown;
   
   for (let i = 0; i < maxRetries; i++) {
     try {

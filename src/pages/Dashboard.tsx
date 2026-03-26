@@ -387,8 +387,8 @@ const Dashboard: React.FC = () => {
                 {(() => {
                   // Sort stock positions
                   const sortedStocks = [...stockPositions].sort((a, b) => {
-                    let aVal: any = a[holdingsSortField];
-                    let bVal: any = b[holdingsSortField];
+                    let aVal: string | number | undefined = a[holdingsSortField];
+                    let bVal: string | number | undefined = b[holdingsSortField];
                     
                     if (holdingsSortField === 'marketValue') {
                       aVal = a.marketValue || a.totalCostBasis;
@@ -400,7 +400,7 @@ const Dashboard: React.FC = () => {
                     if (typeof aVal === 'string' && typeof bVal === 'string') {
                       return aVal.localeCompare(bVal) * multiplier;
                     }
-                    return ((aVal || 0) - (bVal || 0)) * multiplier;
+                    return ((Number(aVal) || 0) - (Number(bVal) || 0)) * multiplier;
                   });
 
                   // Get all open option positions
@@ -615,13 +615,13 @@ const Dashboard: React.FC = () => {
                     </td>
                     <td className="py-3 px-4 text-sm text-gray-400">
                       {transaction.type === 'stock'
-                        ? (transaction as any).action
-                        : (transaction as any).strategy}
+                        ? ('action' in transaction ? transaction.action : '')
+                        : ('strategy' in transaction ? transaction.strategy : '')}
                     </td>
                     <td className="py-3 px-4 text-sm font-medium text-white text-right">
                       {transaction.type === 'stock'
-                        ? formatCurrency((transaction as any).totalAmount)
-                        : formatCurrency((transaction as any).totalPremium)}
+                        ? formatCurrency('totalAmount' in transaction ? transaction.totalAmount : 0)
+                        : formatCurrency('totalPremium' in transaction ? transaction.totalPremium : 0)}
                     </td>
                   </tr>
                 ))}

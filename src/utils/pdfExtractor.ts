@@ -1,4 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import type { TextItem } from 'pdfjs-dist/types/src/display/api';
 
 // Set worker path for pdfjs - use unpkg CDN which is more reliable
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
@@ -17,7 +18,8 @@ export async function extractTextFromPDF(file: File): Promise<string> {
       
       // Concatenate all text items
       const pageText = textContent.items
-        .map((item: any) => item.str)
+        .filter((item): item is TextItem => 'str' in item)
+        .map((item) => item.str)
         .join('\n');
       
       fullText += pageText + '\n';

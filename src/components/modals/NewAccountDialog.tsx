@@ -104,7 +104,7 @@ const NewAccountDialog: React.FC<NewAccountDialogProps> = ({
               </label>
               <select
                 value={accountType}
-                onChange={(e) => setAccountType(e.target.value as any)}
+                onChange={(e) => setAccountType(e.target.value as InvestmentAccount['type'])}
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="brokerage">Brokerage</option>

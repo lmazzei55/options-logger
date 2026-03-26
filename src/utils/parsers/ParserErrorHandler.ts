@@ -115,7 +115,7 @@ export class ParserErrorHandler {
   /**
    * Validate that a required field exists and is not empty
    */
-  static validateRequired(value: any, _fieldName: string): boolean {
+  static validateRequired(value: unknown): boolean {
     if (value === undefined || value === null || value === '') {
       return false;
     }

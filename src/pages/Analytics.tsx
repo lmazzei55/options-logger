@@ -73,14 +73,14 @@ const Analytics: React.FC = () => {
       .filter(t => t.action === 'sell-to-open')
       .sort((a, b) => new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime());
 
-    let cumulative = 0;
-    const data = sorted.map(t => {
-      cumulative += t.totalPremium - t.fees;
-      return {
+    const data = sorted.reduce<{ date: string; premium: number }[]>((acc, t) => {
+      const prev = acc.length > 0 ? acc[acc.length - 1].premium : 0;
+      acc.push({
         date: formatDateLocal(t.transactionDate),
-        premium: cumulative
-      };
-    });
+        premium: prev + t.totalPremium - t.fees
+      });
+      return acc;
+    }, []);
 
     return {
       labels: data.map(d => d.date),

@@ -276,7 +276,7 @@ export class FidelityParser implements BrokerParser {
     i++;
     
     // Skip amount line
-    if (i < lines.length && /^[\$\d,.-]+$/.test(lines[i])) {
+    if (i < lines.length && /^[$\d,.-]+$/.test(lines[i])) {
       i++;
     }
     

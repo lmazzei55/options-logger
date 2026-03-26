@@ -137,7 +137,7 @@ const Options: React.FC = () => {
     }
   };
 
-  const PositionCard = ({ position }: { position: typeof optionPositions[0] }) => {
+  const renderPositionCard = (position: typeof optionPositions[0]) => {
     const account = accounts.find(a => a.id === position.accountId);
     const daysUntil = daysUntilExpiration(position.expirationDate);
     const isExpiringSoon = daysUntil <= 7 && position.status === 'open';
@@ -397,10 +397,10 @@ const Options: React.FC = () => {
     );
   };
 
-  const PositionTable = ({ positions }: { positions: typeof optionPositions }) => {
+  const renderPositionTable = (positions: typeof optionPositions) => {
     const sortedPositions = [...positions].sort((a, b) => {
-      let aVal: any = a[tableSortField];
-      let bVal: any = b[tableSortField];
+      let aVal: string | number | undefined = a[tableSortField];
+      let bVal: string | number | undefined = b[tableSortField];
       
       if (tableSortField === 'expirationDate') {
         aVal = new Date(a.expirationDate).getTime();
@@ -412,7 +412,7 @@ const Options: React.FC = () => {
       if (typeof aVal === 'string' && typeof bVal === 'string') {
         return aVal.localeCompare(bVal) * multiplier;
       }
-      return ((aVal || 0) - (bVal || 0)) * multiplier;
+      return ((Number(aVal) || 0) - (Number(bVal) || 0)) * multiplier;
     });
 
     return (
@@ -749,11 +749,11 @@ const Options: React.FC = () => {
           {viewMode === 'card' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {openPositions.map(position => (
-                <PositionCard key={position.id} position={position} />
+                <React.Fragment key={position.id}>{renderPositionCard(position)}</React.Fragment>
               ))}
             </div>
           ) : (
-            <PositionTable positions={openPositions} />
+            renderPositionTable(openPositions)
           )}
         </div>
       )}
@@ -767,11 +767,11 @@ const Options: React.FC = () => {
           {viewMode === 'card' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {closedPositions.map(position => (
-                <PositionCard key={position.id} position={position} />
+                <React.Fragment key={position.id}>{renderPositionCard(position)}</React.Fragment>
               ))}
             </div>
           ) : (
-            <PositionTable positions={closedPositions} />
+            renderPositionTable(closedPositions)
           )}
         </div>
       )}

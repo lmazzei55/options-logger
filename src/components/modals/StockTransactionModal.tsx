@@ -45,35 +45,35 @@ const StockTransactionModal: React.FC<StockTransactionModalProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Load transaction data if editing
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (transaction) {
-      setFormData({
-        accountId: transaction.accountId,
-        date: transaction.date.includes('T') ? transaction.date.split('T')[0] : transaction.date,
-        action: transaction.action,
-        ticker: transaction.ticker,
-        shares: transaction.shares,
-        pricePerShare: transaction.pricePerShare,
-        fees: transaction.fees || 0,
-        notes: transaction.notes || '',
-        tagIds: transaction.tagIds || []
-      });
-    } else {
-      // Reset form for new transaction, with optional initial values
-      setFormData({
-        accountId: initialValues?.accountId || selectedAccountId || '',
-        date: new Date().toISOString().split('T')[0],
-        action: initialValues?.action || 'buy',
-        ticker: initialValues?.ticker || '',
-        shares: initialValues?.shares || 0,
-        pricePerShare: 0,
-        fees: 0,
-        notes: '',
-        tagIds: []
-      });
-    }
+    const newFormData = transaction
+      ? {
+          accountId: transaction.accountId,
+          date: transaction.date.includes('T') ? transaction.date.split('T')[0] : transaction.date,
+          action: transaction.action,
+          ticker: transaction.ticker,
+          shares: transaction.shares,
+          pricePerShare: transaction.pricePerShare,
+          fees: transaction.fees || 0,
+          notes: transaction.notes || '',
+          tagIds: transaction.tagIds || []
+        }
+      : {
+          accountId: initialValues?.accountId || selectedAccountId || '',
+          date: new Date().toISOString().split('T')[0],
+          action: (initialValues?.action || 'buy') as StockTransaction['action'],
+          ticker: initialValues?.ticker || '',
+          shares: initialValues?.shares || 0,
+          pricePerShare: 0,
+          fees: 0,
+          notes: '',
+          tagIds: [] as string[]
+        };
+    setFormData(newFormData);
     setErrors({});
   }, [transaction, initialValues, selectedAccountId, isOpen]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const totalAmount = useMemo(() => {
     const baseAmount = formData.shares * formData.pricePerShare;

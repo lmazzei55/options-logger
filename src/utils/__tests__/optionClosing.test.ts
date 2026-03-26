@@ -91,7 +91,7 @@ describe('planOptionClose', () => {
 
 describe('checkOptionWashSale', () => {
   it('returns no wash sale for profitable close', () => {
-    const result = checkOptionWashSale('close1', {} as any, [], 100);
+    const result = checkOptionWashSale('close1', {} as Omit<OptionTransaction, 'id'>, [], 100);
     expect(result.hasWashSale).toBe(false);
   });
 

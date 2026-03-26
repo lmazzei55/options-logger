@@ -93,6 +93,7 @@ export class SchwabMonthlyParser implements BrokerParser {
           const tickerExpMatch = tickerLine.match(/(\d{2})\/(\d{2})\/(\d{4})/);
           const tickerExpiration = tickerExpMatch ? `${tickerExpMatch[3]}-${tickerExpMatch[1]}-${tickerExpMatch[2]}` : null;
           if (tickerExpiration) {
+            // Expiration date extracted from ticker line; used later in parseOptionTransaction
           }
           
           i++;

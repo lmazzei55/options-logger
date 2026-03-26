@@ -312,7 +312,7 @@ export class SchwabMonthlyParser implements BrokerParser {
     ticker: string,
     date: string,
     category: string,
-    action: string,
+    _action: string,
     year: string
   ): { transaction: ParsedTransaction; nextIndex: number } | null {
     // Expected structure after ticker:
@@ -352,9 +352,9 @@ export class SchwabMonthlyParser implements BrokerParser {
     const amountLine = lines[i];
     const amountMatch = amountLine.match(/\$?([\d,.]+)/);
     if (!amountMatch) return null;
-    const totalAmount = parseFloat(amountMatch[1].replace(/,/g, ''));
+    // totalAmount parsed to advance line index; not needed in ParsedTransaction
     i++;
-    
+
     // Check for fees
     let fees = 0;
     if (i < lines.length && /Fees?\s*&?\s*Commissions?/.test(lines[i])) {

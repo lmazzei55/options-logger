@@ -372,7 +372,7 @@ export class FidelityParser implements BrokerParser {
     const amountLine = lines[i];
     const amountMatch = amountLine.match(/\$?([\d,.]+)/);
     if (!amountMatch) return null;
-    const totalAmount = parseFloat(amountMatch[1].replace(/,/g, ''));
+    // totalAmount parsed to advance line index; not needed in ParsedTransaction
     i++;
     
     // Check for fees

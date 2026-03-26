@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { formatDateLocal, formatDateLocalWithOptions } from '../../utils/dateUtils';
+import { formatDateLocal } from '../../utils/dateUtils';
 import type { OptionTransaction } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { calculateAnnualizedReturn, daysUntilExpiration } from '../../utils/calculations';

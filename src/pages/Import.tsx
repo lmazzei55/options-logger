@@ -276,9 +276,9 @@ const Import: React.FC = () => {
       
       // Only validate if we have a selected account (or will auto-select)
       // If dialogs will be shown, validation will happen after account selection
-      const shouldValidateNow = selectedAccount || 
-        (firstAccountInfo && matchResult && matchResult.matched && matchResult.confidence === 'exact') ||
-        (firstAccountInfo && matchResult && matchResult.matched && matchResult.confidence === 'partial');
+      const shouldValidateNow = selectedAccount ||
+        (firstAccountInfo && accountMatchResult && accountMatchResult.matched && accountMatchResult.confidence === 'exact') ||
+        (firstAccountInfo && accountMatchResult && accountMatchResult.matched && accountMatchResult.confidence === 'partial');
       
       // Validate and check for duplicates
       const allValidationErrors: ValidationError[] = [];

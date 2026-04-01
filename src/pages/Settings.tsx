@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { Download, Upload, Trash2, Database, AlertCircle, CheckCircle, RotateCcw } from 'lucide-react';
+import { Download, Upload, Trash2, Database, AlertCircle, CheckCircle, RotateCcw, FileText } from 'lucide-react';
+import {
+  exportStockTransactionsCsv,
+  exportOptionTransactionsCsv,
+  exportTaxSummaryCsv,
+  downloadCsv
+} from '../utils/csvExport';
 
 const Settings: React.FC = () => {
-  const { loadMockData, clearAllData, exportData, importData, settings, updateSettings, restoreFromBackup, hasBackup, storageUsedBytes, storageQuotaBytes } = useAppContext();
+  const { loadMockData, clearAllData, exportData, importData, settings, updateSettings, restoreFromBackup, hasBackup, storageUsedBytes, storageQuotaBytes, stockTransactions, optionTransactions, accounts } = useAppContext();
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [showConfirmMock, setShowConfirmMock] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -239,6 +245,52 @@ const Settings: React.FC = () => {
               <Download className="w-4 h-4" />
               Export Data
             </button>
+          </div>
+
+          {/* CSV / Tax Export */}
+          <div className="border border-gray-700 rounded-lg p-4">
+            <h3 className="font-semibold text-white mb-2 flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              CSV &amp; Tax Export
+            </h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Download transactions or a tax summary as a CSV file for use in spreadsheets or tax software.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => {
+                  const date = new Date().toISOString().split('T')[0];
+                  downloadCsv(exportStockTransactionsCsv(stockTransactions, accounts), `stock-transactions-${date}.csv`);
+                  showNotification('success', 'Stock transactions exported.');
+                }}
+                className="flex items-center gap-2 px-3 py-2 bg-blue-700 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm"
+              >
+                <Download className="w-4 h-4" />
+                Stocks CSV
+              </button>
+              <button
+                onClick={() => {
+                  const date = new Date().toISOString().split('T')[0];
+                  downloadCsv(exportOptionTransactionsCsv(optionTransactions, accounts), `option-transactions-${date}.csv`);
+                  showNotification('success', 'Option transactions exported.');
+                }}
+                className="flex items-center gap-2 px-3 py-2 bg-purple-700 text-white rounded-lg hover:bg-purple-600 transition-colors text-sm"
+              >
+                <Download className="w-4 h-4" />
+                Options CSV
+              </button>
+              <button
+                onClick={() => {
+                  const date = new Date().toISOString().split('T')[0];
+                  downloadCsv(exportTaxSummaryCsv(stockTransactions, optionTransactions, accounts), `tax-summary-${date}.csv`);
+                  showNotification('success', 'Tax summary exported.');
+                }}
+                className="flex items-center gap-2 px-3 py-2 bg-orange-700 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm"
+              >
+                <FileText className="w-4 h-4" />
+                Tax Summary CSV
+              </button>
+            </div>
           </div>
 
           {/* Import Data */}

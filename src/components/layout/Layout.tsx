@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
@@ -12,7 +12,9 @@ import {
   X,
   DollarSign,
   FileText,
-  Upload
+  Upload,
+  Undo2,
+  Redo2
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
@@ -23,7 +25,20 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
-  const { accounts, selectedAccountId, setSelectedAccountId } = useAppContext();
+  const { accounts, selectedAccountId, setSelectedAccountId, undo, redo, canUndo, canRedo } = useAppContext();
+
+  // Global keyboard shortcuts: Ctrl+Z / Cmd+Z = undo, Ctrl+Shift+Z / Cmd+Shift+Z = redo
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod) return;
+    if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+    if ((e.key === 'z' && e.shiftKey) || e.key === 'y') { e.preventDefault(); redo(); }
+  }, [undo, redo]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   // Force dark mode
   useEffect(() => {
@@ -109,6 +124,26 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
             
             <div className="hidden md:flex items-center space-x-4">
+              {/* Undo / Redo */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={undo}
+                  disabled={!canUndo}
+                  title="Undo (Ctrl+Z)"
+                  className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Undo2 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={redo}
+                  disabled={!canRedo}
+                  title="Redo (Ctrl+Shift+Z)"
+                  className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Redo2 className="h-4 w-4" />
+                </button>
+              </div>
+
               {/* Account Selector */}
               <select
                 value={selectedAccountId || 'all'}

@@ -25,6 +25,7 @@ import { useStockTransactionState, getStockCashChange } from './useStockTransact
 import { useOptionTransactionState, getOptionCashChange } from './useOptionTransactionState';
 import { useSettingsState } from './useSettingsState';
 import { useDataManagement } from './useDataManagement';
+import { useHistory } from './useHistory';
 
 interface AppContextType {
   // Data
@@ -89,6 +90,10 @@ interface AppContextType {
   hasBackup: boolean;
   storageUsedBytes: number;
   storageQuotaBytes: number;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -280,6 +285,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     addToast
   });
 
+  const history = useHistory(stateForPersistence, stateSetters);
+
   // ==========================================
   // Context value
   // ==========================================
@@ -319,7 +326,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     restoreFromBackup: dataManagement.restoreFromBackup,
     hasBackup: dataManagement.hasBackup,
     storageUsedBytes: dataManagement.storageUsedBytes,
-    storageQuotaBytes: dataManagement.storageQuotaBytes
+    storageQuotaBytes: dataManagement.storageQuotaBytes,
+    undo: history.undo,
+    redo: history.redo,
+    canUndo: history.canUndo,
+    canRedo: history.canRedo
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

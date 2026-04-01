@@ -8,23 +8,29 @@ export async function extractTextFromPDF(file: File): Promise<string> {
   try {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    
+
     let fullText = '';
-    
-    // Extract text from all pages
+
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
       const textContent = await page.getTextContent();
-      
-      // Concatenate all text items
-      const pageText = textContent.items
-        .filter((item): item is TextItem => 'str' in item)
-        .map((item) => item.str)
-        .join('\n');
-      
+
+      // Filter non-empty text items and sort in natural reading order:
+      // top-to-bottom (Y descending in PDF coords), left-to-right (X ascending)
+      // Items within 3 units of the same Y are treated as the same row.
+      const items = textContent.items
+        .filter((item): item is TextItem => 'str' in item && item.str.trim() !== '')
+        .sort((a, b) => {
+          const yA = a.transform[5];
+          const yB = b.transform[5];
+          if (Math.abs(yA - yB) > 3) return yB - yA; // different rows: top first
+          return a.transform[4] - b.transform[4];     // same row: left first
+        });
+
+      const pageText = items.map(item => item.str).join('\n');
       fullText += pageText + '\n';
     }
-    
+
     return fullText;
   } catch (error) {
     throw new Error(`Failed to extract text from PDF: ${error instanceof Error ? error.message : String(error)}`);

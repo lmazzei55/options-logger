@@ -1,5 +1,32 @@
 import type { BrokerParser, ImportResult, ParsedTransaction, ParsedOptionTransaction, AccountInfo } from './BrokerParser';
 
+/**
+ * Parses Schwab monthly brokerage statements.
+ *
+ * Real Schwab PDFs (after pdfjs Y-sorted text extraction) produce one concatenated
+ * line per visual table row, e.g.:
+ *   01/13 Sale SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 (2.0000) 0.3200 1.33 62.67
+ *   26.00 P EXP 01/16/26
+ *   Commission $1.30; Industry Fee $0.03
+ *
+ * Option line format:
+ *   [MM/DD] (Sale|Purchase|Other Activity [Expired Short|Long]) TICKER MM/DD/YYYY (CALL|PUT) <desc> [qty] [price] [fees] [amount]
+ *
+ * Stock line format:
+ *   MM/DD (Sale|Purchase) TICKER <company> qty price [fees] amount
+ *
+ * Continuation line (strike + type): e.g. "26.00 P EXP 01/16/26" or "35.00 C"
+ */
+
+// Option transaction: must have expiry date MM/DD/YYYY after ticker, plus CALL|PUT
+const OPTION_LINE_RE = /^(?:(\d{1,2}\/\d{1,2})\s+)?(Sale|Purchase|Other\s+Activity(?:\s+Expired\s+(?:Short|Long))?)\s+([A-Z]{1,5})\s+(\d{2}\/\d{2}\/\d{4})\s+(CALL|PUT)\s+(.*)/i;
+
+// Stock transaction: has date + action + ticker, but NOT followed by expiry date
+const STOCK_LINE_RE = /^(\d{1,2}\/\d{1,2})\s+(Sale|Purchase)\s+([A-Z]{1,5})(?!\s+\d{2}\/\d{2}\/\d{4})\s*(.*)/;
+
+// Continuation line: strike price + C|P, optionally followed by EXP date
+const CONTINUATION_RE = /^([\d.]+)\s+([CP])(?:\s+EXP\s+\d{2}\/\d{2}\/\d{2})?$/i;
+
 export class SchwabMonthlyParser implements BrokerParser {
   name = 'Schwab Monthly Statement';
   id = 'schwab-monthly';
@@ -11,110 +38,145 @@ export class SchwabMonthlyParser implements BrokerParser {
     const warnings: string[] = [];
 
     try {
-      // Extract account information
       const accountInfo = this.extractAccountInfo(pdfText);
+      const year = this.extractYear(pdfText);
 
-      // Extract year from statement period
-      const yearMatch = pdfText.match(/(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d+-\d+,\s+(\d{4})/);
-      const year = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
-
-      // Find Transaction Details section
-      const txnSectionMatch = pdfText.match(/Transaction Details[\s\S]*?Total Transactions/);
-      
-      if (!txnSectionMatch) {
+      // Flexible section detection — handles "Transaction\nDetails" split across pdfjs items
+      const startIdx = pdfText.search(/Transaction\s+Details/i);
+      if (startIdx === -1) {
         errors.push('Could not find Transaction Details section in PDF');
         return { success: false, transactions: [], optionTransactions: [], accountInfo, errors, warnings };
       }
 
-      const txnSection = txnSectionMatch[0];
-      const lines = txnSection.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const endIdx = pdfText.search(/Total\s+Transactions/i);
+      const section = endIdx !== -1 ? pdfText.substring(startIdx, endIdx) : pdfText.substring(startIdx);
 
-      // Parse transactions
+      const lines = section.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+      let currentDate: string | null = null;
       let i = 0;
+
       while (i < lines.length) {
         const line = lines[i];
-        
-        // Look for date line: "01/13 Sale" or "01/16 Purchase"
-        const dateMatch = line.match(/^(\d{1,2}\/\d{1,2})\s+(Sale|Purchase)/);
-        if (!dateMatch) {
+
+        // --- Try option transaction ---
+        const optMatch = OPTION_LINE_RE.exec(line);
+        if (optMatch) {
+          if (optMatch[1]) currentDate = optMatch[1];
+          const date = currentDate ?? '01/01';
+          const actionStr = optMatch[2].trim();
+          const ticker = optMatch[3];
+          const expiryRaw = optMatch[4]; // MM/DD/YYYY
+          const callPut = optMatch[5].toUpperCase() as 'CALL' | 'PUT';
+          const rest = optMatch[6];
           i++;
+
+          // Extract numeric columns from end of rest: [qty, price, fees, amount] or [qty]
+          const { nums, desc } = this.extractTrailingNumbers(rest);
+
+          // Strike and type: prefer continuation line, fall back to $N in description
+          let strike: number | null = null;
+          let optionType: 'call' | 'put' = callPut === 'CALL' ? 'call' : 'put';
+
+          if (i < lines.length && CONTINUATION_RE.test(lines[i])) {
+            const contMatch = CONTINUATION_RE.exec(lines[i])!;
+            strike = parseFloat(contMatch[1]);
+            optionType = contMatch[2].toUpperCase() === 'C' ? 'call' : 'put';
+            i++;
+          }
+          if (strike === null) {
+            strike = this.extractStrikeFromDesc(desc);
+          }
+
+          // Skip commission/fee detail line
+          if (i < lines.length && /Commission/i.test(lines[i])) {
+            i++;
+          }
+
+          // Map action string to option action
+          const isExpiredShort = /Expired\s+Short/i.test(actionStr);
+          const isExpiredLong = /Expired\s+Long/i.test(actionStr);
+          let optionAction: 'sell-to-open' | 'buy-to-open' | 'buy-to-close' | 'sell-to-close';
+          let notesSuffix = '';
+          if (isExpiredShort) {
+            optionAction = 'buy-to-close';
+            notesSuffix = ' (expired short)';
+          } else if (isExpiredLong) {
+            optionAction = 'sell-to-close';
+            notesSuffix = ' (expired long)';
+          } else if (/^Sale/i.test(actionStr)) {
+            optionAction = 'sell-to-open';
+          } else {
+            optionAction = 'buy-to-open';
+          }
+
+          // nums layout: 4 = [qty, price, fees, amount], 1 = [qty] (expired at $0)
+          const qty = nums.length >= 1 ? Math.abs(nums[0]) : 0;
+          const premiumPerShare = nums.length >= 2 ? nums[1] : 0;
+          const fees = nums.length >= 3 ? nums[2] : 0;
+
+          // Parse expiry date MM/DD/YYYY → YYYY-MM-DD
+          const [em, ed, ey] = expiryRaw.split('/');
+          const expirationDate = `${ey}-${em}-${ed}`;
+
+          if (qty > 0 && strike !== null) {
+            optionTransactions.push({
+              date: this.parseDate(`${date}/${year}`),
+              ticker,
+              optionType,
+              action: optionAction,
+              contracts: qty,
+              strikePrice: strike,
+              premiumPerShare,
+              expirationDate,
+              fees,
+              notes: `Imported from Schwab monthly statement${notesSuffix}`
+            });
+          } else {
+            warnings.push(`Skipped option line (missing strike or qty=0): ${line}`);
+          }
           continue;
         }
-        
-        const date = dateMatch[1];
-        const category = dateMatch[2];
+
+        // --- Try stock transaction ---
+        const stockMatch = STOCK_LINE_RE.exec(line);
+        if (stockMatch) {
+          currentDate = stockMatch[1];
+          const category = stockMatch[2];
+          const ticker = stockMatch[3];
+          const rest = stockMatch[4];
+          i++;
+
+          const { nums } = this.extractTrailingNumbers(rest);
+
+          // Skip any continuation/detail lines belonging to this stock entry
+          while (
+            i < lines.length &&
+            !OPTION_LINE_RE.test(lines[i]) &&
+            !STOCK_LINE_RE.test(lines[i])
+          ) {
+            i++;
+          }
+
+          // Need at least qty + price
+          if (nums.length >= 2) {
+            const shares = Math.abs(nums[0]);
+            const pricePerShare = nums[1];
+            const fees = nums.length >= 4 ? nums[2] : 0;
+            transactions.push({
+              date: this.parseDate(`${currentDate}/${year}`),
+              ticker,
+              action: /^Sale/i.test(category) ? 'sell' : 'buy',
+              shares,
+              pricePerShare,
+              fees,
+              notes: 'Imported from Schwab monthly statement'
+            });
+          }
+          continue;
+        }
+
         i++;
-        
-        // Check if next line is an action (Short Sale, Cover Short, etc.)
-        let action = '';
-        if (i < lines.length && (lines[i] === 'Short Sale' || lines[i] === 'Cover Short')) {
-          action = lines[i];
-          i++;
-        }
-        
-        // Parse all transactions for this date
-        // Keep looking for tickers until we hit another date line or run out of lines
-        let currentCategory = category;
-        let currentAction = action;
-        
-        while (i < lines.length) {
-          // Check if we've hit the next date line
-          if (/^\d{1,2}\/\d{1,2}\s+(Sale|Purchase)/.test(lines[i])) {
-            break; // Exit inner loop, will be picked up by outer loop
-          }
-          
-          // Check if this line is a category change (Sale/Purchase without date)
-          if (lines[i] === 'Sale' || lines[i] === 'Purchase') {
-            currentCategory = lines[i];
-            i++;
-            
-            // Check if next line is an action
-            if (i < lines.length && (lines[i] === 'Short Sale' || lines[i] === 'Cover Short')) {
-              currentAction = lines[i];
-              i++;
-            } else {
-              currentAction = '';
-            }
-            continue;
-          }
-          
-          const tickerLine = lines[i];
-          // Check if this is a ticker (standalone or with date like "SOFI 01/30/2026")
-          const tickerMatch = tickerLine.match(/^([A-Z]{2,5})(?:\s|$)/);
-          if (!tickerMatch) {
-            // Not a ticker, move to next line
-            i++;
-            continue;
-          }
-          
-          const ticker = tickerMatch[1];
-          
-          // Check if ticker line contains expiration date (SOFI format)
-          const tickerExpMatch = tickerLine.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-          const tickerExpiration = tickerExpMatch ? `${tickerExpMatch[3]}-${tickerExpMatch[1]}-${tickerExpMatch[2]}` : null;
-          if (tickerExpiration) {
-            // Expiration date extracted from ticker line; used later in parseOptionTransaction
-          }
-          
-          i++;
-          
-          // Try to parse as option transaction first
-          const option = this.parseOptionTransaction(lines, i, ticker, date, currentCategory, currentAction, year, tickerExpiration);
-          if (option) {
-            optionTransactions.push(option.transaction);
-            i = option.nextIndex;
-          } else {
-            // Try to parse as stock transaction
-            const stock = this.parseStockTransaction(lines, i, ticker, date, currentCategory, currentAction, year);
-            if (stock) {
-              transactions.push(stock.transaction);
-              i = stock.nextIndex;
-            } else {
-              // If both parsing attempts failed, skip this ticker
-              i++;
-            }
-          }
-        }
       }
 
       if (transactions.length === 0 && optionTransactions.length === 0) {
@@ -135,309 +197,79 @@ export class SchwabMonthlyParser implements BrokerParser {
     }
   }
 
-  private parseOptionTransaction(
-    lines: string[],
-    startIndex: number,
-    ticker: string,
-    date: string,
-    category: string,
-    action: string,
-    year: string,
-    tickerExpiration: string | null = null
-  ): { transaction: ParsedOptionTransaction; nextIndex: number } | null {
-    // Expected structure after ticker:
-    // - Expiration line (e.g., "03/20/2026 40.00" or "01/30/2026")
-    // - C or P
-    // - Description (e.g., "CALL AEHR TEST SYS" or "PUT SOFI TECHNOLOGIES IN$26")
-    // - Strike (e.g., "$40")
-    // - EXP line (e.g., "EXP 03/20/26")
-    // - Quantity (e.g., "(10.0000)")
-    // - Price (e.g., "0.8800")
-    // - Charges (e.g., "6.64")
-    // - Amount (e.g., "873.36")
-    // - Commission line (optional)
-    
-    let i = startIndex;
-    
-    
-    let expirationDate: string;
-    
-    // If expiration was in ticker line (SOFI format), use it
-    if (tickerExpiration) {
-      expirationDate = tickerExpiration;
-    } else {
-      // Parse expiration date line (AEHR format: "03/20/2026 40.00")
-      if (i >= lines.length) {
-        return null;
-      }
-      const expDateLine = lines[i];
-      const expDateMatch = expDateLine.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-      if (!expDateMatch) {
-        return null;
-      }
-      expirationDate = `${expDateMatch[3]}-${expDateMatch[1]}-${expDateMatch[2]}`;
-      i++;
+  /**
+   * Extracts numeric columns from the end of a string (right to left).
+   * Numbers may be plain (e.g. "8.2500") or negative in parens (e.g. "(825.66)").
+   * Stops when a non-numeric token is encountered (dates with slashes are safe stops).
+   */
+  private extractTrailingNumbers(str: string): { nums: number[]; negs: boolean[]; desc: string } {
+    const nums: number[] = [];
+    const negs: boolean[] = [];
+    let rest = str.trimEnd();
+
+    // Match: whitespace + (optional parens wrapping digits/commas/dot)
+    const re = /\s+(\([\d,]+\.?\d*\)|[\d,]+\.?\d*)$/;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(rest)) !== null) {
+      const raw = m[1];
+      const neg = raw.startsWith('(');
+      const val = parseFloat(raw.replace(/[(),]/g, '').replace(/,/g, ''));
+      if (isNaN(val)) break;
+      nums.unshift(val);
+      negs.unshift(neg);
+      rest = rest.slice(0, rest.length - m[0].length);
     }
-    
-    // Parse C or P (may be standalone or combined with strike like "26.00 P")
-    if (i >= lines.length) {
-      return null;
-    }
-    const cpLine = lines[i];
-    
-    let optionType: 'call' | 'put';
-    let strikeFromCPLine: number | null = null;
-    
-    if (cpLine === 'C' || cpLine === 'P') {
-      // AEHR format: standalone C or P
-      optionType = cpLine === 'C' ? 'call' : 'put';
-      i++;
-    } else if (/^[\d.]+\s+[CP]$/.test(cpLine)) {
-      // SOFI format: "26.00 P" or "26.00 C"
-      const match = cpLine.match(/^([\d.]+)\s+([CP])$/);
-      if (match) {
-        strikeFromCPLine = parseFloat(match[1]);
-        optionType = match[2] === 'C' ? 'call' : 'put';
-        i++;
-      } else {
-        return null;
-      }
-    } else {
-      return null;
-    }
-    
-    // Parse description (contains CALL/PUT and may contain strike)
-    if (i >= lines.length) return null;
-    const descLine = lines[i];
-    if (!/\b(CALL|PUT)\b/.test(descLine)) return null;
-    i++;
-    
-    // Parse strike price (may already have it from combined C/P line)
-    let strikePrice: number;
-    if (strikeFromCPLine !== null) {
-      strikePrice = strikeFromCPLine;
-    } else {
-      if (i >= lines.length) return null;
-      const strikeLine = lines[i];
-      const strikeMatch = strikeLine.match(/\$(\d+(?:\.\d+)?)/);
-      if (!strikeMatch) return null;
-      strikePrice = parseFloat(strikeMatch[1]);
-      i++;
-    }
-    
-    // Parse EXP line (skip it, we already have expiration)
-    if (i >= lines.length) return null;
-    if (lines[i].startsWith('EXP')) {
-      i++;
-    }
-    
-    // Parse quantity
-    if (i >= lines.length) return null;
-    const quantityLine = lines[i];
-    const quantityMatch = quantityLine.match(/\(?([\d.]+)\)?/);
-    if (!quantityMatch) return null;
-    const contracts = Math.abs(parseFloat(quantityMatch[1]));
-    i++;
-    
-    // Parse price per share
-    if (i >= lines.length) return null;
-    const priceLine = lines[i];
-    const priceMatch = priceLine.match(/^([\d.]+)$/);
-    if (!priceMatch) return null;
-    const premiumPerShare = parseFloat(priceMatch[1]);
-    i++;
-    
-    // Parse charges/fees
-    if (i >= lines.length) return null;
-    const chargesLine = lines[i];
-    const chargesMatch = chargesLine.match(/^([\d.]+)$/);
-    const fees = chargesMatch ? parseFloat(chargesMatch[1]) : 0;
-    i++;
-    
-    // Skip amount line
-    if (i < lines.length && /^[\d,.-]+$/.test(lines[i].replace(/[()]/g, ''))) {
-      i++;
-    }
-    
-    // Skip commission line if present
-    if (i < lines.length && lines[i].includes('Commission')) {
-      i++;
-    }
-    
-    // Determine action type
-    let optionAction: 'sell-to-open' | 'buy-to-open' | 'buy-to-close' | 'sell-to-close';
-    
-    
-    // Check for realized gain/loss in next few lines
-    const nextLines = lines.slice(i, Math.min(i + 5, lines.length)).join(' ');
-    const hasRealizedGL = /Realized|Gain\/\(Loss\)/.test(nextLines);
-    
-    if (category === 'Sale' && action === 'Short Sale') {
-      optionAction = 'sell-to-open';
-    } else if (category === 'Purchase' && action === 'Cover Short') {
-      optionAction = 'buy-to-close';
-    } else if (category === 'Purchase' && hasRealizedGL) {
-      optionAction = 'buy-to-close';
-    } else if (category === 'Sale' && hasRealizedGL) {
-      optionAction = 'sell-to-close';
-    } else if (category === 'Sale') {
-      optionAction = 'sell-to-open';
-    } else {
-      optionAction = 'buy-to-open';
-    }
-    
-    
-    // Parse full date
-    const fullDate = this.parseDate(`${date}/${year}`);
-    
-    return {
-      transaction: {
-        date: fullDate,
-        ticker,
-        optionType,
-        action: optionAction,
-        contracts,
-        strikePrice,
-        premiumPerShare,
-        expirationDate,
-        fees,
-        notes: `Imported from Schwab monthly statement`
-      },
-      nextIndex: i
-    };
+
+    return { nums, negs, desc: rest.trim() };
   }
 
-  private parseStockTransaction(
-    lines: string[],
-    startIndex: number,
-    ticker: string,
-    date: string,
-    category: string,
-    _action: string,
-    year: string
-  ): { transaction: ParsedTransaction; nextIndex: number } | null {
-    // Expected structure after ticker:
-    // - Company name (e.g., "Apple Inc." or "APPLE INC")
-    // - Quantity (e.g., "100" or "100.0000")
-    // - Price (e.g., "$150.00" or "150.00")
-    // - Amount (e.g., "$15,000.00" or "15000.00")
-    // - Optional: Fees line
-    
-    let i = startIndex;
-    
-    // Skip company name line (may be multiple words)
-    if (i >= lines.length) return null;
-    // Company name typically doesn't start with a number or $
-    if (!/^[\d$]/.test(lines[i])) {
-      i++;
-    }
-    
-    // Parse quantity
-    if (i >= lines.length) return null;
-    const quantityLine = lines[i];
-    const quantityMatch = quantityLine.match(/^([\d,.]+)$/);
-    if (!quantityMatch) return null;
-    const shares = parseFloat(quantityMatch[1].replace(/,/g, ''));
-    i++;
-    
-    // Parse price per share
-    if (i >= lines.length) return null;
-    const priceLine = lines[i];
-    const priceMatch = priceLine.match(/\$?([\d,.]+)/);
-    if (!priceMatch) return null;
-    const pricePerShare = parseFloat(priceMatch[1].replace(/,/g, ''));
-    i++;
-    
-    // Parse total amount
-    if (i >= lines.length) return null;
-    const amountLine = lines[i];
-    const amountMatch = amountLine.match(/\$?([\d,.]+)/);
-    if (!amountMatch) return null;
-    // totalAmount parsed to advance line index; not needed in ParsedTransaction
-    i++;
-
-    // Check for fees
-    let fees = 0;
-    if (i < lines.length && /Fees?\s*&?\s*Commissions?/.test(lines[i])) {
-      i++;
-      if (i < lines.length) {
-        const feesMatch = lines[i].match(/\$?([\d,.]+)/);
-        if (feesMatch) {
-          fees = parseFloat(feesMatch[1].replace(/,/g, ''));
-          i++;
-        }
-      }
-    }
-    
-    // Determine action
-    const stockAction: 'buy' | 'sell' = category === 'Purchase' ? 'buy' : 'sell';
-    
-    // Parse full date
-    const fullDate = this.parseDate(`${date}/${year}`);
-    
-    return {
-      transaction: {
-        date: fullDate,
-        ticker,
-        action: stockAction,
-        shares,
-        pricePerShare,
-        fees,
-        notes: `Imported from Schwab monthly statement`
-      },
-      nextIndex: i
-    };
+  /** Extract strike price from description, e.g. "$26" → 26, "$200" → 200 */
+  private extractStrikeFromDesc(desc: string): number | null {
+    const m = desc.match(/\$(\d+(?:\.\d+)?)/);
+    return m ? parseFloat(m[1]) : null;
   }
 
+  /** Extract 4-digit year from statement period header */
+  private extractYear(pdfText: string): string {
+    const m = pdfText.match(
+      /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d+-\d+,\s+(\d{4})/i
+    );
+    return m ? m[1] : new Date().getFullYear().toString();
+  }
+
+  /** Convert MM/DD/YYYY to YYYY-MM-DD */
   private parseDate(dateStr: string): string {
-    // Convert MM/DD/YYYY to YYYY-MM-DD
     const parts = dateStr.split('/');
     if (parts.length !== 3) return dateStr;
-    
     const month = parts[0].padStart(2, '0');
     const day = parts[1].padStart(2, '0');
     const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
-    
     return `${year}-${month}-${day}`;
   }
 
   private extractAccountInfo(pdfText: string): AccountInfo | undefined {
-    // Try to extract account number
-    // Common patterns in Schwab statements:
-    // "Account Number ****1234"
-    // "Account #: 12345678"
-    // "Acct: 1234-5678"
-    const accountNumberMatch = pdfText.match(/Account\s+(?:Number|#|Acct)?\s*:?\s*[*]*(\d{4,10})/i);
-    
-    if (!accountNumberMatch) {
-      return undefined;
-    }
+    // Schwab account numbers: XXXX-X554, ****-1234, 12345678, etc.
+    const accountMatch =
+      pdfText.match(/Account\s+(?:Number|#|Acct)?\s*:?\s*[*X]*([\dX*-]{4,20})/i) ??
+      pdfText.match(/([\dX*]{3,6}-[\dX*]{3,6})/);
 
-    const accountNumber = accountNumberMatch[1];
+    if (!accountMatch) return undefined;
 
-    // Try to extract account type
-    // Patterns: "Account Type: Individual", "Type: Margin"
+    const accountNumber = accountMatch[1];
+
     let accountType: 'brokerage' | 'retirement' | 'margin' | 'crypto' | undefined;
-    let accountName: string | undefined;
-
-    const accountTypeMatch = pdfText.match(/(?:Account\s+)?Type\s*:?\s*(.*?)(?:\n|$)/i);
-    if (accountTypeMatch) {
-      const typeText = accountTypeMatch[1].toLowerCase();
-      if (typeText.includes('retirement') || typeText.includes('ira') || typeText.includes('401k')) {
+    const typeMatch = pdfText.match(/(?:Account\s+)?Type\s*:?\s*(.*?)(?:\n|$)/i);
+    if (typeMatch) {
+      const t = typeMatch[1].toLowerCase();
+      if (t.includes('ira') || t.includes('retirement') || t.includes('401k')) {
         accountType = 'retirement';
-      } else if (typeText.includes('margin')) {
+      } else if (t.includes('margin')) {
         accountType = 'margin';
-      } else if (typeText.includes('brokerage') || typeText.includes('individual')) {
+      } else {
         accountType = 'brokerage';
       }
-      accountName = accountTypeMatch[1].trim();
     }
 
-    return {
-      accountNumber,
-      broker: 'Schwab',
-      accountName,
-      accountType
-    };
+    return { accountNumber, broker: 'Schwab', accountType };
   }
 }

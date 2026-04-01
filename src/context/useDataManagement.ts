@@ -41,8 +41,22 @@ interface DataManagementParams {
   addToast: (toast: { type: 'success' | 'error' | 'warning' | 'info'; title: string; message: string; duration?: number }) => void;
 }
 
+// localStorage is typically capped at 5 MB per origin
+const LOCAL_STORAGE_QUOTA_BYTES = 5 * 1024 * 1024;
+
+function applyParsedData(parsed: ReturnType<typeof applyMigrations>, setters: StateSetters) {
+  setters.setAccounts((parsed.accounts as InvestmentAccount[]) || []);
+  setters.setStockTransactions((parsed.stockTransactions as StockTransaction[]) || []);
+  setters.setOptionTransactions((parsed.optionTransactions as OptionTransaction[]) || []);
+  setters.setTags((parsed.tags as Tag[]) || []);
+  setters.setTemplates((parsed.templates as TransactionTemplate[]) || []);
+  setters.setSettings({ ...defaultSettings, ...(parsed.settings as Partial<AppSettings>) });
+  setters.setSelectedAccountId((parsed.selectedAccountId as string | null) || null);
+}
+
 export function useDataManagement({ state, setters, addToast }: DataManagementParams) {
   const [hasBackup, setHasBackup] = useState(false);
+  const [storageUsedBytes, setStorageUsedBytes] = useState(0);
   const isInitialMount = useRef(true);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDataRef = useRef<string | null>(null);
@@ -58,20 +72,35 @@ export function useDataManagement({ state, setters, addToast }: DataManagementPa
       try {
         const raw = JSON.parse(savedData);
         const parsed = applyMigrations(raw);
-        setters.setAccounts((parsed.accounts as InvestmentAccount[]) || []);
-        setters.setStockTransactions((parsed.stockTransactions as StockTransaction[]) || []);
-        setters.setOptionTransactions((parsed.optionTransactions as OptionTransaction[]) || []);
-        setters.setTags((parsed.tags as Tag[]) || []);
-        setters.setTemplates((parsed.templates as TransactionTemplate[]) || []);
-        setters.setSettings({ ...defaultSettings, ...(parsed.settings as Partial<AppSettings>) });
-        setters.setSelectedAccountId((parsed.selectedAccountId as string | null) || null);
+        applyParsedData(parsed, setters);
         if (raw.schemaVersion !== CURRENT_SCHEMA_VERSION) {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
         }
+        setStorageUsedBytes(new Blob([savedData]).size);
       } catch (error) {
         console.error('Failed to load data from localStorage:', error);
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ==========================================
+  // Tab sync via StorageEvent (P2.3)
+  // ==========================================
+
+  useEffect(() => {
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY || !e.newValue) return;
+      try {
+        const parsed = applyMigrations(JSON.parse(e.newValue));
+        applyParsedData(parsed, setters);
+        setStorageUsedBytes(new Blob([e.newValue]).size);
+      } catch (error) {
+        console.error('Failed to sync from another tab:', error);
+      }
+    };
+    window.addEventListener('storage', handleStorageEvent);
+    return () => window.removeEventListener('storage', handleStorageEvent);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -81,18 +110,29 @@ export function useDataManagement({ state, setters, addToast }: DataManagementPa
 
   const flushSave = useCallback(() => {
     if (pendingDataRef.current !== null) {
+      const data = pendingDataRef.current;
       try {
-        localStorage.setItem(STORAGE_KEY, pendingDataRef.current);
+        localStorage.setItem(STORAGE_KEY, data);
+        const bytes = new Blob([data]).size;
+        setStorageUsedBytes(bytes);
+        if (bytes / LOCAL_STORAGE_QUOTA_BYTES > 0.8) {
+          addToast({
+            type: 'warning',
+            title: 'Storage Almost Full',
+            message: `You've used ${Math.round(bytes / LOCAL_STORAGE_QUOTA_BYTES * 100)}% of available storage. Export your data to avoid losing it.`,
+            duration: 10000
+          });
+        }
       } catch (error) {
         if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-          console.error('localStorage quota exceeded.');
+          addToast({ type: 'error', title: 'Storage Full', message: 'localStorage is full. Export your data immediately to avoid data loss.', duration: 0 });
         } else {
           console.error('Failed to save data to localStorage:', error);
         }
       }
       pendingDataRef.current = null;
     }
-  }, []);
+  }, [addToast]);
 
   useEffect(() => {
     const handleBeforeUnload = () => flushSave();
@@ -289,6 +329,8 @@ export function useDataManagement({ state, setters, addToast }: DataManagementPa
 
   return {
     hasBackup,
+    storageUsedBytes,
+    storageQuotaBytes: LOCAL_STORAGE_QUOTA_BYTES,
     loadMockData,
     clearAllData,
     exportData,

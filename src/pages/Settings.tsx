@@ -3,7 +3,7 @@ import { useAppContext } from '../context/AppContext';
 import { Download, Upload, Trash2, Database, AlertCircle, CheckCircle, RotateCcw } from 'lucide-react';
 
 const Settings: React.FC = () => {
-  const { loadMockData, clearAllData, exportData, importData, settings, updateSettings, restoreFromBackup, hasBackup } = useAppContext();
+  const { loadMockData, clearAllData, exportData, importData, settings, updateSettings, restoreFromBackup, hasBackup, storageUsedBytes, storageQuotaBytes } = useAppContext();
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [showConfirmMock, setShowConfirmMock] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -196,6 +196,34 @@ const Settings: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Storage Usage */}
+          <div className="border border-gray-700 rounded-lg p-4">
+            <h3 className="font-semibold text-white mb-2 flex items-center gap-2">
+              <Database className="w-4 h-4" />
+              Storage Usage
+            </h3>
+            {(() => {
+              const usedKB = Math.round(storageUsedBytes / 1024);
+              const totalKB = Math.round(storageQuotaBytes / 1024);
+              const pct = storageQuotaBytes > 0 ? Math.min(100, Math.round(storageUsedBytes / storageQuotaBytes * 100)) : 0;
+              const barColor = pct >= 80 ? 'bg-red-500' : pct >= 60 ? 'bg-yellow-500' : 'bg-green-500';
+              return (
+                <>
+                  <div className="flex justify-between text-sm text-gray-400 mb-1">
+                    <span>{usedKB} KB used</span>
+                    <span>{pct}% of ~{Math.round(totalKB / 1024)} MB</span>
+                  </div>
+                  <div className="w-full bg-gray-700 rounded-full h-2">
+                    <div className={`${barColor} h-2 rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                  </div>
+                  {pct >= 80 && (
+                    <p className="text-xs text-red-400 mt-2">Storage is almost full — export your data to avoid data loss.</p>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {/* Export Data */}

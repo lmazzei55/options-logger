@@ -87,6 +87,8 @@ interface AppContextType {
   importData: (jsonData: string) => boolean;
   restoreFromBackup: () => boolean;
   hasBackup: boolean;
+  storageUsedBytes: number;
+  storageQuotaBytes: number;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -315,7 +317,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     exportData: dataManagement.exportData,
     importData: dataManagement.importData,
     restoreFromBackup: dataManagement.restoreFromBackup,
-    hasBackup: dataManagement.hasBackup
+    hasBackup: dataManagement.hasBackup,
+    storageUsedBytes: dataManagement.storageUsedBytes,
+    storageQuotaBytes: dataManagement.storageQuotaBytes
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

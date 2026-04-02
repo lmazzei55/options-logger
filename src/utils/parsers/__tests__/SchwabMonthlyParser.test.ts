@@ -34,15 +34,19 @@ describe('SchwabMonthlyParser', () => {
   });
 
   describe('Error Handling', () => {
-    it('should return error when Transaction Details section is missing', () => {
+    it('should return success with warning when Transaction Details section is missing', () => {
       const result = parser.parse('Some random text without the required section');
-      expect(result.success).toBe(false);
-      expect(result.errors[0]).toContain('Could not find Transaction Details section');
+      expect(result.success).toBe(true);
+      expect(result.transactions).toHaveLength(0);
+      expect(result.optionTransactions).toHaveLength(0);
+      expect(result.warnings[0]).toContain('No Transaction Details section found');
     });
 
-    it('should handle empty PDF text', () => {
+    it('should handle empty PDF text gracefully', () => {
       const result = parser.parse('');
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
+      expect(result.transactions).toHaveLength(0);
+      expect(result.optionTransactions).toHaveLength(0);
     });
 
     it('should handle malformed data gracefully', () => {
@@ -290,6 +294,126 @@ describe('SchwabMonthlyParser', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Format E — "Sale Short Sale" (short sale / sell-to-open via short)
+  // Format F — "Purchase Cover Short" (buy-to-close a short position)
+  // October 2025 statement patterns
+  // ---------------------------------------------------------------------------
+  describe('Format E/F — Short Sale and Cover Short actions (October 2025)', () => {
+    it('should parse Short Sale as sell-to-open', () => {
+      const pdfText = [
+        'October 1-31, 2025',
+        'Transaction Details',
+        '10/14 Sale Short Sale ASTS CALL AST SPACEMOBILE INC$75 EXP 12/17/27 (1.0000) 46.9200 0.66 4,691.34',
+        '12/17/2027 75.00 C',
+        'Commission $0.65; Industry Fee $0.01',
+        'Total Transactions'
+      ].join('\n');
+
+      const result = parser.parse(pdfText);
+      expect(result.success).toBe(true);
+      expect(result.optionTransactions).toHaveLength(1);
+      expect(result.optionTransactions[0]).toMatchObject({
+        date: '2025-10-14',
+        ticker: 'ASTS',
+        optionType: 'call',
+        action: 'sell-to-open',
+        contracts: 1,
+        strikePrice: 75,
+        premiumPerShare: 46.92,
+        expirationDate: '2027-12-17',
+        fees: 0.66
+      });
+    });
+
+    it('should parse Cover Short as buy-to-close', () => {
+      const pdfText = [
+        'October 1-31, 2025',
+        'Transaction Details',
+        '10/14 Sale Short Sale ASTS CALL AST SPACEMOBILE INC$75 EXP 12/17/27 (1.0000) 46.9200 0.66 4,691.34',
+        '12/17/2027 75.00 C',
+        'Commission $0.65; Industry Fee $0.01',
+        'Purchase Cover Short ASTS CALL AST SPACEMOBILE INC$50 EXP 10/24/25 1.0000 37.2700 0.66 (3,727.66) (3,273.32)(ST)',
+        '10/24/2025 50.00 C',
+        'Commission $0.65; Industry Fee $0.01',
+        'Total Transactions'
+      ].join('\n');
+
+      const result = parser.parse(pdfText);
+      expect(result.optionTransactions).toHaveLength(2);
+      expect(result.optionTransactions[1]).toMatchObject({
+        date: '2025-10-14', // inherits date from preceding Short Sale line
+        ticker: 'ASTS',
+        optionType: 'call',
+        action: 'buy-to-close',
+        contracts: 1,
+        strikePrice: 50,
+        premiumPerShare: 37.27,
+        expirationDate: '2025-10-24',
+        fees: 0.66
+      });
+    });
+
+    it('should handle (ST) gain/loss annotation without breaking number extraction', () => {
+      // The ,(ST) suffix on realized gain column must not block parsing
+      const pdfText = [
+        'November 1-30, 2025',
+        'Transaction Details',
+        '11/18 Sale AEHR PUT AEHR TEST SYS $22.5 (2.0000) 2.6400 1.33 526.67 105.35,(ST)',
+        '11/21/2025 22.50 EXP 11/21/25',
+        'P',
+        'Commission $1.30; Industry Fee $0.03',
+        'Total Transactions'
+      ].join('\n');
+
+      const result = parser.parse(pdfText);
+      expect(result.success).toBe(true);
+      expect(result.optionTransactions).toHaveLength(1);
+      expect(result.optionTransactions[0]).toMatchObject({
+        date: '2025-11-18',
+        ticker: 'AEHR',
+        optionType: 'put',
+        contracts: 2,
+        strikePrice: 22.5,
+        premiumPerShare: 2.64,
+        fees: 1.33
+      });
+    });
+
+    it('should parse October 2025 full statement: ASTS short sale + cover short + AEHR purchase', () => {
+      const pdfText = [
+        'October 1-31, 2025',
+        'Transaction Details',
+        '10/02 Redemption Cash-In-Lieu WOLF WOLFSPEED INC 10.67',
+        '10/14 Sale Short Sale ASTS CALL AST SPACEMOBILE INC$75 EXP 12/17/27 (1.0000) 46.9200 0.66 4,691.34',
+        '12/17/2027 75.00 C',
+        'Commission $0.65; Industry Fee $0.01',
+        'Purchase Cover Short ASTS CALL AST SPACEMOBILE INC$50 EXP 10/24/25 1.0000 37.2700 0.66 (3,727.66) (3,273.32)(ST)',
+        '10/24/2025 50.00 C',
+        'Commission $0.65; Industry Fee $0.01',
+        'Purchase AEHR PUT AEHR TEST SYS $22.5 EXP 11/21/25 2.0000 2.1000 1.32 (421.32)',
+        '11/21/2025 22.50 P',
+        'Commission $1.30; Industry Fee $0.02',
+        'Total Transactions $553.03 ($3,273.32)'
+      ].join('\n');
+
+      const result = parser.parse(pdfText);
+      expect(result.success).toBe(true);
+      expect(result.transactions).toHaveLength(0);
+      expect(result.optionTransactions).toHaveLength(3);
+
+      expect(result.optionTransactions[0]).toMatchObject({
+        ticker: 'ASTS', action: 'sell-to-open', contracts: 1, strikePrice: 75, date: '2025-10-14'
+      });
+      expect(result.optionTransactions[1]).toMatchObject({
+        ticker: 'ASTS', action: 'buy-to-close', contracts: 1, strikePrice: 50, date: '2025-10-14'
+      });
+      expect(result.optionTransactions[2]).toMatchObject({
+        ticker: 'AEHR', action: 'buy-to-open', contracts: 2, strikePrice: 22.5, date: '2025-10-14'
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Stock transactions
   // ---------------------------------------------------------------------------
   describe('Stock Transactions', () => {
@@ -372,6 +496,47 @@ describe('SchwabMonthlyParser', () => {
       const result = parser.parse(pdfText);
       expect(result.success).toBe(true);
       expect(result.optionTransactions).toHaveLength(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Statements with no importable transactions
+  // ---------------------------------------------------------------------------
+  describe('Statements with no importable trades', () => {
+    it('should succeed with warning when no Transaction Details section exists (e.g. December with zero trades)', () => {
+      // Mirrors a statement where the period had zero activity — no Transaction Details page at all
+      const pdfText = [
+        'December 1-31, 2025',
+        'Transactions Summary',
+        'Purchases 0.00',
+        'Sales 0.00',
+        'Total 0.00'
+      ].join('\n');
+
+      const result = parser.parse(pdfText);
+      expect(result.success).toBe(true);
+      expect(result.transactions).toHaveLength(0);
+      expect(result.optionTransactions).toHaveLength(0);
+      expect(result.errors).toHaveLength(0);
+      expect(result.warnings.some(w => w.includes('No Transaction Details section found'))).toBe(true);
+    });
+
+    it('should succeed with warning when Transaction Details has only corporate actions (e.g. Liquidation, Redemption)', () => {
+      // Mirrors February 2026 statement with WOLF liquidation + redemption cash-in-lieu
+      const pdfText = [
+        'February 1-28, 2026',
+        'Transaction Details',
+        '02/04 Other Activity Liquidation WOLF WOLFSPEED INC 5.0000',
+        '02/05 Redemption Cash-In-Lieu WOLF WOLFSPEED INC 7.81',
+        'Total Transactions 7.81'
+      ].join('\n');
+
+      const result = parser.parse(pdfText);
+      expect(result.success).toBe(true);
+      expect(result.transactions).toHaveLength(0);
+      expect(result.optionTransactions).toHaveLength(0);
+      expect(result.errors).toHaveLength(0);
+      expect(result.warnings.some(w => w.includes('No importable transactions found'))).toBe(true);
     });
   });
 });

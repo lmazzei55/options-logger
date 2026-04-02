@@ -25,13 +25,32 @@ import type { BrokerParser, ImportResult, ParsedTransaction, ParsedOptionTransac
  * D) No leading date, expiry on same line:
  *    "Other Expired Long SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 2.0000"
  *    "Activity 26.00 P EXP 01/16/26"
+ *
+ * E) Short Sale (Category="Sale" + Action="Short Sale" merged):
+ *    "10/14 Sale Short Sale ASTS CALL AST SPACEMOBILE INC$75 EXP 12/17/27 (1.0000) 46.9200 0.66 4,691.34"
+ *    "12/17/2027 75.00 C"
+ *
+ * F) Cover Short (Category="Purchase" + Action="Cover Short" merged):
+ *    "Purchase Cover Short ASTS CALL AST SPACEMOBILE INC$50 EXP 10/24/25 1.0000 37.2700 0.66 (3,727.66) (3,273.32)(ST)"
+ *    "10/24/2025 50.00 C"
+ *
+ * Note: Realized gain/loss columns may append ,(ST) or (ST) to the last number — stripped before parsing.
  */
 
+// Action alternatives — ordered most-specific first to prevent partial matches
+const ACTION_RE_PART = '(Sale\\s+Short\\s+Sale|Short\\s+Sale|Purchase\\s+Cover\\s+Short|Cover\\s+Short|Sale|Purchase|Other(?:\\s+Activity)?(?:\\s+Expired\\s+(?:Short|Long))?)';
+
 // Matches a transaction header line with TICKER then MM/DD/YYYY (expiry on same line)
-const OPTION_WITH_EXPIRY_RE = /^(?:(\d{1,2}\/\d{1,2})\s+)?(Sale|Purchase|Other(?:\s+Activity)?(?:\s+Expired\s+(?:Short|Long))?)\s+([A-Z]{1,6})\s+(\d{2}\/\d{2}\/\d{4})\s+(CALL|PUT)\s*(.*)/i;
+const OPTION_WITH_EXPIRY_RE = new RegExp(
+  `^(?:(\\d{1,2}\\/\\d{1,2})\\s+)?${ACTION_RE_PART}\\s+([A-Z]{1,6})\\s+(\\d{2}\\/\\d{2}\\/\\d{4})\\s+(CALL|PUT)\\s*(.*)`,
+  'i'
+);
 
 // Matches a transaction header line where expiry is NOT on this line
-const OPTION_NO_EXPIRY_RE = /^(?:(\d{1,2}\/\d{1,2})\s+)?(Sale|Purchase|Other(?:\s+Activity)?(?:\s+Expired\s+(?:Short|Long))?)\s+([A-Z]{1,6})\s+(CALL|PUT)\s*(.*)/i;
+const OPTION_NO_EXPIRY_RE = new RegExp(
+  `^(?:(\\d{1,2}\\/\\d{1,2})\\s+)?${ACTION_RE_PART}\\s+([A-Z]{1,6})\\s+(CALL|PUT)\\s*(.*)`,
+  'i'
+);
 
 // Matches a stock transaction line (no CALL/PUT keyword present)
 const STOCK_LINE_RE = /^(\d{1,2}\/\d{1,2})\s+(Sale|Purchase)\s+([A-Z]{1,6})\s+(.*)/;
@@ -63,8 +82,8 @@ export class SchwabMonthlyParser implements BrokerParser {
 
       const startIdx = pdfText.search(/Transaction\s+Details/i);
       if (startIdx === -1) {
-        errors.push('Could not find Transaction Details section in PDF');
-        return { success: false, transactions: [], optionTransactions: [], accountInfo, errors, warnings };
+        warnings.push('No Transaction Details section found — this statement may have no trades for the period');
+        return { success: true, transactions: [], optionTransactions: [], accountInfo, errors, warnings };
       }
 
       const endIdx = pdfText.search(/Total\s+Transactions/i);
@@ -266,11 +285,11 @@ export class SchwabMonthlyParser implements BrokerParser {
       }
 
       if (transactions.length === 0 && optionTransactions.length === 0) {
-        warnings.push('No transactions found in the statement');
+        warnings.push('No importable transactions found in this statement (may contain only corporate actions such as Liquidation or Redemption)');
       }
 
       return {
-        success: transactions.length > 0 || optionTransactions.length > 0,
+        success: true,
         transactions,
         optionTransactions,
         accountInfo,
@@ -290,6 +309,8 @@ export class SchwabMonthlyParser implements BrokerParser {
   private mapOptionAction(actionStr: string): 'sell-to-open' | 'buy-to-open' | 'buy-to-close' | 'sell-to-close' {
     if (/Expired\s+Short/i.test(actionStr)) return 'buy-to-close';
     if (/Expired\s+Long/i.test(actionStr)) return 'sell-to-close';
+    if (/Short\s+Sale/i.test(actionStr)) return 'sell-to-open';
+    if (/Cover\s+Short/i.test(actionStr)) return 'buy-to-close';
     if (/^Sale/i.test(actionStr)) return 'sell-to-open';
     return 'buy-to-open';
   }
@@ -297,6 +318,8 @@ export class SchwabMonthlyParser implements BrokerParser {
   private expiredNote(actionStr: string): string {
     if (/Expired\s+Short/i.test(actionStr)) return ' (expired short)';
     if (/Expired\s+Long/i.test(actionStr)) return ' (expired long)';
+    if (/Short\s+Sale/i.test(actionStr)) return ' (short sale)';
+    if (/Cover\s+Short/i.test(actionStr)) return ' (cover short)';
     return '';
   }
 
@@ -310,7 +333,8 @@ export class SchwabMonthlyParser implements BrokerParser {
 
   private extractTrailingNumbers(str: string): { nums: number[]; desc: string } {
     const nums: number[] = [];
-    let rest = str.trimEnd();
+    // Strip realized gain/loss type annotations: ,(ST), (ST), ,(LT), (LT) etc.
+    let rest = str.trimEnd().replace(/[,\s]*\([A-Z]+\)$/, '');
     const re = /\s+(\([\d,]+\.?\d*\)|[\d,]+\.?\d*)$/;
     let m: RegExpExecArray | null;
     while ((m = re.exec(rest)) !== null) {

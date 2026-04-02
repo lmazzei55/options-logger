@@ -135,6 +135,7 @@ export class SchwabMonthlyParser implements BrokerParser {
               premiumPerShare,
               expirationDate,
               fees,
+              isExpired,
               notes: `Imported from Schwab monthly statement${this.expiredNote(actionStr)}`
             });
           } else {
@@ -215,6 +216,7 @@ export class SchwabMonthlyParser implements BrokerParser {
               premiumPerShare,
               expirationDate,
               fees,
+              isExpired,
               notes: `Imported from Schwab monthly statement${this.expiredNote(actionStr)}`
             });
           } else {

@@ -122,7 +122,7 @@ const Import: React.FC = () => {
         fees: txn.fees || 0,
         expirationDate: txn.expirationDate,
         transactionDate: txn.date,
-        status: (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
+        status: txn.isExpired ? 'expired' : (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
         notes: txn.notes
       }, accounts);
       
@@ -147,7 +147,7 @@ const Import: React.FC = () => {
         fees: txn.fees || 0,
         expirationDate: txn.expirationDate,
         transactionDate: txn.date,
-        status: (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
+        status: txn.isExpired ? 'expired' : (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
         notes: txn.notes
       }, optionTransactions);
       
@@ -361,7 +361,7 @@ const Import: React.FC = () => {
           fees: txn.fees || 0,
           expirationDate: txn.expirationDate,
           transactionDate: txn.date,
-          status: (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
+          status: txn.isExpired ? 'expired' : (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
           notes: txn.notes
         }, accounts);
 
@@ -386,7 +386,7 @@ const Import: React.FC = () => {
           fees: txn.fees || 0,
           expirationDate: txn.expirationDate,
           transactionDate: txn.date,
-          status: (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
+          status: txn.isExpired ? 'expired' : (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
           notes: txn.notes
         }, optionTransactions);
 
@@ -508,7 +508,7 @@ const Import: React.FC = () => {
           fees: txn.fees || 0,
           expirationDate: txn.expirationDate,
           transactionDate: txn.date,
-          status: (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
+          status: txn.isExpired ? 'expired' : (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
           notes: txn.notes || `Imported from ${brokers.find(b => b.id === selectedBroker)?.name}`
         });
         importedCount++;

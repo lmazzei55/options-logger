@@ -19,6 +19,7 @@ export interface ParsedOptionTransaction {
   expirationDate: string; // ISO format (YYYY-MM-DD)
   fees?: number;
   notes?: string;
+  isExpired?: boolean; // true when option expired worthless (vs. actively closed)
 }
 
 export interface AccountInfo {

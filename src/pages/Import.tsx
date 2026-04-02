@@ -35,6 +35,11 @@ const Import: React.FC = () => {
   const [duplicateCount, setDuplicateCount] = useState(0);
   const [showPreview, setShowPreview] = useState(false);
   
+  const [excludedStockIndices, setExcludedStockIndices] = useState<Set<number>>(new Set());
+  const [excludedOptionIndices, setExcludedOptionIndices] = useState<Set<number>>(new Set());
+  const [rawPdfText, setRawPdfText] = useState<string>('');
+  const [showRawText, setShowRawText] = useState(false);
+
   // Account matching state
   const [detectedAccountInfo, setDetectedAccountInfo] = useState<AccountInfo | null>(null);
   const [accountMatchResult, setAccountMatchResult] = useState<AccountMatchResult | null>(null);
@@ -68,7 +73,7 @@ const Import: React.FC = () => {
         shares: txn.shares,
         pricePerShare: txn.pricePerShare,
         fees: txn.fees || 0,
-        totalAmount: txn.shares * txn.pricePerShare + (txn.fees || 0),
+        totalAmount: txn.shares * txn.pricePerShare,
         notes: txn.notes
       }, accounts);
       
@@ -87,7 +92,7 @@ const Import: React.FC = () => {
         shares: txn.shares,
         pricePerShare: txn.pricePerShare,
         fees: txn.fees || 0,
-        totalAmount: txn.shares * txn.pricePerShare + (txn.fees || 0),
+        totalAmount: txn.shares * txn.pricePerShare,
         date: txn.date,
         notes: txn.notes
       }, stockTransactions);
@@ -117,7 +122,7 @@ const Import: React.FC = () => {
         fees: txn.fees || 0,
         expirationDate: txn.expirationDate,
         transactionDate: txn.date,
-        status: 'open',
+        status: txn.isExpired ? 'expired' : (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
         notes: txn.notes
       }, accounts);
       
@@ -142,7 +147,7 @@ const Import: React.FC = () => {
         fees: txn.fees || 0,
         expirationDate: txn.expirationDate,
         transactionDate: txn.date,
-        status: 'open',
+        status: txn.isExpired ? 'expired' : (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
         notes: txn.notes
       }, optionTransactions);
       
@@ -179,6 +184,8 @@ const Import: React.FC = () => {
     setParsedTransactions([]);
     setParsedOptionTransactions([]);
     setShowPreview(false);
+    setExcludedStockIndices(new Set());
+    setExcludedOptionIndices(new Set());
   };
   
   const handleParse = async () => {
@@ -218,7 +225,8 @@ const Import: React.FC = () => {
         try {
           // Extract text from PDF
           const pdfText = await extractTextFromPDF(file);
-          
+          setRawPdfText(pdfText);
+
           // Parse the PDF text
           const result = parser.parse(pdfText);
           
@@ -304,7 +312,7 @@ const Import: React.FC = () => {
           shares: txn.shares,
           pricePerShare: txn.pricePerShare,
           fees: txn.fees || 0,
-          totalAmount: txn.shares * txn.pricePerShare + (txn.fees || 0),
+          totalAmount: txn.shares * txn.pricePerShare,
           notes: txn.notes
         }, accounts);
 
@@ -324,7 +332,7 @@ const Import: React.FC = () => {
           shares: txn.shares,
           pricePerShare: txn.pricePerShare,
           fees: txn.fees || 0,
-          totalAmount: txn.shares * txn.pricePerShare + (txn.fees || 0),
+          totalAmount: txn.shares * txn.pricePerShare,
           notes: txn.notes
         }, stockTransactions);
 
@@ -353,7 +361,7 @@ const Import: React.FC = () => {
           fees: txn.fees || 0,
           expirationDate: txn.expirationDate,
           transactionDate: txn.date,
-          status: 'open',
+          status: txn.isExpired ? 'expired' : (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
           notes: txn.notes
         }, accounts);
 
@@ -378,7 +386,7 @@ const Import: React.FC = () => {
           fees: txn.fees || 0,
           expirationDate: txn.expirationDate,
           transactionDate: txn.date,
-          status: 'open',
+          status: txn.isExpired ? 'expired' : (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
           notes: txn.notes
         }, optionTransactions);
 
@@ -410,6 +418,21 @@ const Import: React.FC = () => {
     }
   };
   
+  const toggleStockExclusion = (idx: number) => {
+    setExcludedStockIndices(prev => {
+      const next = new Set(prev);
+      next.has(idx) ? next.delete(idx) : next.add(idx);
+      return next;
+    });
+  };
+  const toggleOptionExclusion = (idx: number) => {
+    setExcludedOptionIndices(prev => {
+      const next = new Set(prev);
+      next.has(idx) ? next.delete(idx) : next.add(idx);
+      return next;
+    });
+  };
+
   const handleImport = () => {
     if (!selectedAccount) {
       setErrors(['Please select an account to import transactions to']);
@@ -440,9 +463,11 @@ const Import: React.FC = () => {
     const importErrors: string[] = [];
     
     // Import stock transactions
-    for (const txn of parsedTransactions) {
+    for (let idx = 0; idx < parsedTransactions.length; idx++) {
+      if (excludedStockIndices.has(idx)) continue;
+      const txn = parsedTransactions[idx];
       try {
-        const totalAmount = txn.shares * txn.pricePerShare + (txn.fees || 0);
+        const totalAmount = txn.shares * txn.pricePerShare;
         addStockTransaction({
           accountId: selectedAccount,
           date: txn.date,
@@ -461,13 +486,19 @@ const Import: React.FC = () => {
     }
     
     // Import options transactions
-    for (const txn of parsedOptionTransactions) {
+    for (let idx = 0; idx < parsedOptionTransactions.length; idx++) {
+      if (excludedOptionIndices.has(idx)) continue;
+      const txn = parsedOptionTransactions[idx];
       try {
         const totalPremium = txn.contracts * txn.premiumPerShare * 100; // 100 shares per contract
         addOptionTransaction({
           accountId: selectedAccount,
           ticker: txn.ticker,
-          strategy: 'other', // Default strategy, user can update later
+          strategy: (() => {
+            if (txn.action === 'sell-to-open') return txn.optionType === 'put' ? 'cash-secured-put' : 'covered-call';
+            if (txn.action === 'buy-to-open') return txn.optionType === 'call' ? 'long-call' : 'long-put';
+            return 'other';
+          })(),
           optionType: txn.optionType,
           action: txn.action,
           contracts: txn.contracts,
@@ -477,7 +508,7 @@ const Import: React.FC = () => {
           fees: txn.fees || 0,
           expirationDate: txn.expirationDate,
           transactionDate: txn.date,
-          status: 'open', // Default to open, will be updated by position tracking
+          status: txn.isExpired ? 'expired' : (txn.action === 'buy-to-close' || txn.action === 'sell-to-close') ? 'closed' : 'open',
           notes: txn.notes || `Imported from ${brokers.find(b => b.id === selectedBroker)?.name}`
         });
         importedCount++;
@@ -710,6 +741,7 @@ const Import: React.FC = () => {
                       <th className="text-right py-3 px-4 text-gray-400 font-medium">Shares</th>
                       <th className="text-right py-3 px-4 text-gray-400 font-medium">Price</th>
                       <th className="text-right py-3 px-4 text-gray-400 font-medium">Total</th>
+                      <th className="py-3 px-4 text-gray-400 font-medium">Exclude</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -728,6 +760,15 @@ const Import: React.FC = () => {
                     <td className="py-3 px-4 text-right text-gray-300">${txn.pricePerShare.toFixed(2)}</td>
                     <td className="py-3 px-4 text-right text-white font-medium">
                       ${(txn.shares * txn.pricePerShare).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <input
+                        type="checkbox"
+                        checked={excludedStockIndices.has(i)}
+                        onChange={() => toggleStockExclusion(i)}
+                        className="w-4 h-4 accent-red-500 cursor-pointer"
+                        title="Exclude from import"
+                      />
                     </td>
                   </tr>
                      ))}
@@ -755,6 +796,7 @@ const Import: React.FC = () => {
                       <th className="text-right py-3 px-4 text-gray-400 font-medium">Fees</th>
                       <th className="text-right py-3 px-4 text-gray-400 font-medium">Total</th>
                       <th className="text-left py-3 px-4 text-gray-400 font-medium">Expiration</th>
+                      <th className="py-3 px-4 text-gray-400 font-medium">Exclude</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -791,6 +833,15 @@ const Import: React.FC = () => {
                           })()}
                         </td>
                         <td className="py-3 px-4 text-gray-300">{txn.expirationDate}</td>
+                        <td className="py-3 px-4 text-center">
+                          <input
+                            type="checkbox"
+                            checked={excludedOptionIndices.has(i)}
+                            onChange={() => toggleOptionExclusion(i)}
+                            className="w-4 h-4 accent-red-500 cursor-pointer"
+                            title="Exclude from import"
+                          />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -805,7 +856,7 @@ const Import: React.FC = () => {
               disabled={!selectedAccount}
               className="flex-1 px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors font-medium"
             >
-              Import {parsedTransactions.length + parsedOptionTransactions.length} Transaction(s)
+              Import {parsedTransactions.length + parsedOptionTransactions.length - excludedStockIndices.size - excludedOptionIndices.size} of {parsedTransactions.length + parsedOptionTransactions.length} Transaction(s)
             </button>
             <button
               onClick={() => {
@@ -813,6 +864,8 @@ const Import: React.FC = () => {
                 setParsedTransactions([]);
                 setParsedOptionTransactions([]);
                 setFiles([]);
+                setExcludedStockIndices(new Set());
+                setExcludedOptionIndices(new Set());
               }}
               className="px-6 py-3 bg-gray-700 text-gray-300 rounded-md hover:bg-gray-600 transition-colors font-medium"
             >
@@ -822,6 +875,26 @@ const Import: React.FC = () => {
         </div>
       )}
       
+      {/* Raw PDF Text (debug) */}
+      {rawPdfText && (
+        <div className="bg-gray-900 rounded-lg shadow-lg p-6 border border-gray-800">
+          <button
+            onClick={() => setShowRawText(v => !v)}
+            className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-300 transition-colors"
+          >
+            <FileText className="w-4 h-4" />
+            {showRawText ? 'Hide' : 'Show'} extracted PDF text (debug)
+          </button>
+          {showRawText && (
+            <textarea
+              readOnly
+              value={rawPdfText}
+              className="mt-3 w-full h-64 px-3 py-2 bg-gray-800 text-gray-300 text-xs font-mono rounded border border-gray-700 resize-y"
+            />
+          )}
+        </div>
+      )}
+
       {/* Account Matching Dialogs */}
       {detectedAccountInfo && (
         <>

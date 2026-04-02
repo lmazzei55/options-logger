@@ -84,15 +84,72 @@ export function calculatePartialClose(
 }
 
 /**
- * Detect potential wash sales
- * A wash sale occurs when you sell a security at a loss and buy a substantially identical
- * security within 30 days before or after the sale
+ * Calculate FIFO cost basis for a given number of shares sold on a given date.
+ * Consumes lots chronologically (oldest first), accounting for prior sells.
+ * Returns the total cost basis for the shares being sold, or null if insufficient lots.
  */
+function getFifoCostBasis(
+  transactions: StockTransaction[],
+  ticker: string,
+  sellDate: Date,
+  sharesToSell: number,
+  excludeId?: string
+): number | null {
+  // Build chronological list of buys before the sell date
+  const lots = transactions
+    .filter(t =>
+      t.ticker === ticker &&
+      t.action === 'buy' &&
+      t.id !== excludeId &&
+      new Date(t.date) < sellDate
+    )
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // Account for prior sells (consume oldest lots first)
+  const sells = transactions
+    .filter(t =>
+      t.ticker === ticker &&
+      t.action === 'sell' &&
+      t.id !== excludeId &&
+      new Date(t.date) < sellDate
+    )
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // Track remaining shares in each lot
+  const lotRemaining = lots.map(l => ({ shares: l.shares, price: l.pricePerShare }));
+  let lotIdx = 0;
+
+  for (const sell of sells) {
+    let sharesLeft = sell.shares;
+    while (sharesLeft > 0 && lotIdx < lotRemaining.length) {
+      const consume = Math.min(sharesLeft, lotRemaining[lotIdx].shares);
+      lotRemaining[lotIdx].shares -= consume;
+      sharesLeft -= consume;
+      if (lotRemaining[lotIdx].shares === 0) lotIdx++;
+    }
+  }
+
+  // Now consume FIFO lots for the current sell
+  let remaining = sharesToSell;
+  let totalCost = 0;
+  for (let i = lotIdx; i < lotRemaining.length && remaining > 0; i++) {
+    const consume = Math.min(remaining, lotRemaining[i].shares);
+    totalCost += consume * lotRemaining[i].price;
+    remaining -= consume;
+  }
+
+  if (remaining > 0) return null; // Not enough lots to cover the sell
+  return totalCost;
+}
+
 /**
- * Detect potential wash sales for stock transactions.
+ * Detect potential wash sales for stock transactions using FIFO cost basis.
+ * A wash sale occurs when you sell a security at a loss and buy a substantially
+ * identical security within 30 days before or after the sale.
+ *
  * Checks BOTH directions:
  * 1. When SELLING at a loss: checks for buys within 30 days before/after
- * 2. When BUYING: checks if there was a sell at a loss within 30 days before/after
+ * 2. When BUYING: checks if there was a recent sell at a loss within 30 days
  */
 export function detectStockWashSales(
   transactions: StockTransaction[],
@@ -107,77 +164,49 @@ export function detectStockWashSales(
   const washEnd = new Date(targetDate);
   washEnd.setDate(washEnd.getDate() + 30);
 
-  // Case 1: User is BUYING - check if there was a recent sell at a loss for the same ticker
+  // Case 1: User is BUYING — check if there was a sell at a loss within the wash window
   if (targetTxn.action === 'buy') {
-    // Find sell transactions for the same ticker within the wash sale window
     const recentSells = transactions.filter(t => {
       if (t.id === targetTransactionId) return false;
-      if (t.ticker !== targetTxn.ticker) return false;
-      if (t.action !== 'sell') return false;
-      const txnDate = new Date(t.date);
-      return txnDate >= washStart && txnDate <= washEnd;
+      if (t.ticker !== targetTxn.ticker || t.action !== 'sell') return false;
+      const d = new Date(t.date);
+      return d >= washStart && d <= washEnd;
     });
 
-    // For each sell, check if it was at a loss
     for (const sellTxn of recentSells) {
-      // Find buys before this sell to determine cost basis
-      const priorBuys = transactions
-        .filter(t =>
-          t.ticker === sellTxn.ticker &&
-          t.action === 'buy' &&
-          t.id !== targetTransactionId &&
-          new Date(t.date) < new Date(sellTxn.date)
-        )
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-      if (priorBuys.length > 0) {
-        const costBasis = priorBuys[0].pricePerShare * sellTxn.shares;
-        const saleProceeds = sellTxn.pricePerShare * sellTxn.shares;
-        const loss = saleProceeds - costBasis;
-
-        if (loss < 0) {
-          return {
-            transactionId: targetTransactionId,
-            ticker: targetTxn.ticker,
-            lossAmount: Math.abs(loss),
-            washSalePeriodStart: washStart,
-            washSalePeriodEnd: washEnd,
-            hasWashSale: true,
-            relatedTransactionIds: [sellTxn.id]
-          };
-        }
+      const sellDate = new Date(sellTxn.date);
+      const costBasis = getFifoCostBasis(transactions, sellTxn.ticker, sellDate, sellTxn.shares, targetTransactionId);
+      if (costBasis === null) continue;
+      const proceeds = sellTxn.pricePerShare * sellTxn.shares - (sellTxn.fees || 0);
+      if (proceeds - costBasis < 0) {
+        return {
+          transactionId: targetTransactionId,
+          ticker: targetTxn.ticker,
+          lossAmount: Math.abs(proceeds - costBasis),
+          washSalePeriodStart: washStart,
+          washSalePeriodEnd: washEnd,
+          hasWashSale: true,
+          relatedTransactionIds: [sellTxn.id]
+        };
       }
     }
-
     return null;
   }
 
-  // Case 2: User is SELLING - check if this is a loss and if there are buys within 30 days
+  // Case 2: User is SELLING — calculate FIFO loss and check for nearby buys
   if (targetTxn.action === 'sell') {
-    // Find the most recent buy before this sell to determine cost basis
-    const priorBuys = transactions
-      .filter(t =>
-        t.ticker === targetTxn.ticker &&
-        t.action === 'buy' &&
-        new Date(t.date) < targetDate
-      )
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const costBasis = getFifoCostBasis(transactions, targetTxn.ticker, targetDate, targetTxn.shares, targetTransactionId);
+    if (costBasis === null) return null;
 
-    if (priorBuys.length === 0) return null;
+    const proceeds = targetTxn.pricePerShare * targetTxn.shares - (targetTxn.fees || 0);
+    const loss = proceeds - costBasis;
+    if (loss >= 0) return null;
 
-    const costBasis = priorBuys[0].pricePerShare * targetTxn.shares;
-    const saleProceeds = targetTxn.pricePerShare * targetTxn.shares;
-    const loss = saleProceeds - costBasis;
-
-    if (loss >= 0) return null; // No loss, no wash sale
-
-    // Find buy transactions within the wash sale window
     const relatedBuys = transactions.filter(t => {
       if (t.id === targetTransactionId) return false;
-      if (t.ticker !== targetTxn.ticker) return false;
-      if (t.action !== 'buy') return false;
-      const txnDate = new Date(t.date);
-      return txnDate >= washStart && txnDate <= washEnd;
+      if (t.ticker !== targetTxn.ticker || t.action !== 'buy') return false;
+      const d = new Date(t.date);
+      return d >= washStart && d <= washEnd;
     });
 
     if (relatedBuys.length === 0) return null;

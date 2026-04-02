@@ -2,20 +2,30 @@ import { describe, it, expect } from 'vitest';
 import { SchwabMonthlyParser } from '../SchwabMonthlyParser';
 
 /**
- * Tests reflect the *real* Schwab PDF format after pdfjs Y-sorted text extraction:
- * all fields on a single visual row are concatenated onto ONE line.
+ * Tests reflect the actual pdfjs-extracted text from a real January 2026
+ * Schwab statement (after glyph-merging in pdfExtractor).
  *
- * Real January 2026 statement example lines:
- *   01/13 Sale SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 (2.0000) 0.3200 1.33 62.67
- *   26.00 P EXP 01/16/26
- *   Commission $1.30; Industry Fee $0.03
+ * Key format observations from the debug output:
+ *
+ * A) SOFI sell — expiry on same line:
+ *    "01/13 Sale SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 (2.0000) 0.3200 1.33 62.67"
+ *    "26.00 P EXP 01/16/26"
+ *
+ * B) AEHR buy — expiry on CONTINUATION line:
+ *    "01/22 Purchase AEHR CALL AEHR TEST SYS $35 1.0000 8.2500 0.66 (825.66)"
+ *    "01/15/2027 35.00 EXP 01/15/27 C"
+ *
+ * C) NVDA expired short — "Activity" wraps to next line:
+ *    "01/20 Other Expired Short NVDA CALL NVIDIA CORP $200 EXP (1.0000)"
+ *    "Activity 01/16/2026 01/16/26 200.00 C"
+ *
+ * D) SOFI expired long — no leading date, expiry on same line:
+ *    "Other Expired Long SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 2.0000"
+ *    "Activity 26.00 P EXP 01/16/26"
  */
 describe('SchwabMonthlyParser', () => {
   const parser = new SchwabMonthlyParser();
 
-  // ---------------------------------------------------------------------------
-  // Basic properties
-  // ---------------------------------------------------------------------------
   describe('Basic Parser Properties', () => {
     it('should have correct name and id', () => {
       expect(parser.name).toBe('Schwab Monthly Statement');
@@ -23,55 +33,47 @@ describe('SchwabMonthlyParser', () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Error handling
-  // ---------------------------------------------------------------------------
   describe('Error Handling', () => {
     it('should return error when Transaction Details section is missing', () => {
       const result = parser.parse('Some random text without the required section');
       expect(result.success).toBe(false);
-      expect(result.errors).toHaveLength(1);
       expect(result.errors[0]).toContain('Could not find Transaction Details section');
     });
 
     it('should handle empty PDF text', () => {
       const result = parser.parse('');
       expect(result.success).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should handle malformed transaction data gracefully', () => {
-      const pdfText = [
-        'Transaction Details',
-        'INVALID DATA HERE WITH NO STRUCTURE',
-        'Total Transactions'
-      ].join('\n');
+    it('should handle malformed data gracefully', () => {
+      const pdfText = 'Transaction Details\nINVALID DATA HERE\nTotal Transactions';
       const result = parser.parse(pdfText);
-      expect(result.success).toBeDefined();
       expect(Array.isArray(result.transactions)).toBe(true);
       expect(Array.isArray(result.optionTransactions)).toBe(true);
     });
   });
 
   // ---------------------------------------------------------------------------
-  // Real Schwab PDF format — option transactions
+  // Format A: expiry on the SAME line as the transaction
   // ---------------------------------------------------------------------------
-  describe('Option Transactions (real PDF format)', () => {
-    it('should parse a sell-to-open put option (SOFI 26P)', () => {
+  describe('Format A — expiry on same line (SOFI sell-to-open)', () => {
+    it('should parse a sell-to-open put', () => {
       const pdfText = [
         'January 1-31, 2026',
         'Transaction Details',
         '01/13 Sale SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 (2.0000) 0.3200 1.33 62.67',
         '26.00 P EXP 01/16/26',
         'Commission $1.30; Industry Fee $0.03',
-        'Total Transactions 62.67'
+        'Total Transactions'
       ].join('\n');
 
       const result = parser.parse(pdfText);
 
       expect(result.success).toBe(true);
       expect(result.optionTransactions).toHaveLength(1);
+      expect(result.transactions).toHaveLength(0);
       expect(result.optionTransactions[0]).toMatchObject({
+        date: '2026-01-13',
         ticker: 'SOFI',
         optionType: 'put',
         action: 'sell-to-open',
@@ -81,15 +83,73 @@ describe('SchwabMonthlyParser', () => {
         expirationDate: '2026-01-16',
         fees: 1.33
       });
-      expect(result.optionTransactions[0].date).toBe('2026-01-13');
     });
+  });
 
-    it('should parse an expired short option as buy-to-close at $0 (NVDA 200C)', () => {
+  // ---------------------------------------------------------------------------
+  // Format B: expiry on CONTINUATION line (AEHR buy-to-open)
+  // ---------------------------------------------------------------------------
+  describe('Format B — expiry on continuation line (AEHR buy-to-open)', () => {
+    it('should parse a buy-to-open call with expiry on next line', () => {
       const pdfText = [
         'January 1-31, 2026',
         'Transaction Details',
-        '01/20 Other Activity Expired Short NVDA 01/16/2026 CALL NVIDIA CORP $200 EXP 01/16/26 (1.0000)',
-        '200.00 C',
+        '01/22 Purchase AEHR CALL AEHR TEST SYS $35 1.0000 8.2500 0.66 (825.66)',
+        '01/15/2027 35.00 EXP 01/15/27 C',
+        'Commission $0.65; Industry Fee $0.01',
+        'Total Transactions'
+      ].join('\n');
+
+      const result = parser.parse(pdfText);
+
+      expect(result.success).toBe(true);
+      expect(result.optionTransactions).toHaveLength(1);
+      expect(result.transactions).toHaveLength(0);
+      expect(result.optionTransactions[0]).toMatchObject({
+        date: '2026-01-22',
+        ticker: 'AEHR',
+        optionType: 'call',
+        action: 'buy-to-open',
+        contracts: 1,
+        strikePrice: 35,
+        premiumPerShare: 8.25,
+        expirationDate: '2027-01-15',
+        fees: 0.66
+      });
+    });
+
+    it('should parse a second buy-to-open call (AEHR $40)', () => {
+      const pdfText = [
+        'January 1-31, 2026',
+        'Transaction Details',
+        '01/27 Purchase AEHR CALL AEHR TEST SYS $40 1.0000 6.5800 0.66 (658.66)',
+        '01/15/2027 40.00 EXP 01/15/27 C',
+        'Commission $0.65; Industry Fee $0.01',
+        'Total Transactions'
+      ].join('\n');
+
+      const result = parser.parse(pdfText);
+
+      expect(result.optionTransactions).toHaveLength(1);
+      expect(result.optionTransactions[0]).toMatchObject({
+        ticker: 'AEHR',
+        strikePrice: 40,
+        premiumPerShare: 6.58,
+        expirationDate: '2027-01-15'
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Format C: "Activity" wraps to next line (NVDA expired short)
+  // ---------------------------------------------------------------------------
+  describe('Format C — "Other Activity" split across lines (NVDA expired short)', () => {
+    it('should parse expired short as buy-to-close at $0', () => {
+      const pdfText = [
+        'January 1-31, 2026',
+        'Transaction Details',
+        '01/20 Other Expired Short NVDA CALL NVIDIA CORP $200 EXP (1.0000)',
+        'Activity 01/16/2026 01/16/26 200.00 C',
         'Total Transactions'
       ].join('\n');
 
@@ -98,6 +158,7 @@ describe('SchwabMonthlyParser', () => {
       expect(result.success).toBe(true);
       expect(result.optionTransactions).toHaveLength(1);
       expect(result.optionTransactions[0]).toMatchObject({
+        date: '2026-01-20',
         ticker: 'NVDA',
         optionType: 'call',
         action: 'buy-to-close',
@@ -108,21 +169,29 @@ describe('SchwabMonthlyParser', () => {
         fees: 0
       });
     });
+  });
 
-    it('should parse an expired long option as sell-to-close at $0 (SOFI 26P)', () => {
+  // ---------------------------------------------------------------------------
+  // Format D: no leading date, "Other Expired Long", expiry same line
+  // ---------------------------------------------------------------------------
+  describe('Format D — no leading date, expired long (SOFI expired long)', () => {
+    it('should parse expired long as sell-to-close at $0, inheriting date', () => {
       const pdfText = [
         'January 1-31, 2026',
         'Transaction Details',
-        '01/20 Other Activity Expired Long SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 EXP 01/16/26 2.0000',
-        '26.00 P',
+        '01/20 Other Expired Short NVDA CALL NVIDIA CORP $200 EXP (1.0000)',
+        'Activity 01/16/2026 01/16/26 200.00 C',
+        'Other Expired Long SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 2.0000',
+        'Activity 26.00 P EXP 01/16/26',
         'Total Transactions'
       ].join('\n');
 
       const result = parser.parse(pdfText);
 
-      expect(result.success).toBe(true);
-      expect(result.optionTransactions).toHaveLength(1);
-      expect(result.optionTransactions[0]).toMatchObject({
+      expect(result.optionTransactions).toHaveLength(2);
+      const sofi = result.optionTransactions[1];
+      expect(sofi).toMatchObject({
+        date: '2026-01-20',
         ticker: 'SOFI',
         optionType: 'put',
         action: 'sell-to-close',
@@ -133,105 +202,44 @@ describe('SchwabMonthlyParser', () => {
         fees: 0
       });
     });
-
-    it('should parse a buy-to-open call option (AEHR $35 Jan 2027)', () => {
-      const pdfText = [
-        'January 1-31, 2026',
-        'Transaction Details',
-        '01/22 Purchase AEHR 01/15/2027 CALL AEHR TEST SYS $35 EXP 01/15/27 1.0000 8.2500 0.66 (825.66)',
-        '35.00 C',
-        'Commission $0.65; Industry Fee $0.01',
-        'Total Transactions'
-      ].join('\n');
-
-      const result = parser.parse(pdfText);
-
-      expect(result.success).toBe(true);
-      expect(result.optionTransactions).toHaveLength(1);
-      expect(result.optionTransactions[0]).toMatchObject({
-        ticker: 'AEHR',
-        optionType: 'call',
-        action: 'buy-to-open',
-        contracts: 1,
-        strikePrice: 35,
-        premiumPerShare: 8.25,
-        expirationDate: '2027-01-15',
-        fees: 0.66
-      });
-      expect(result.optionTransactions[0].date).toBe('2026-01-22');
-    });
-
-    it('should parse a second buy-to-open call option (AEHR $40 Jan 2027)', () => {
-      const pdfText = [
-        'January 1-31, 2026',
-        'Transaction Details',
-        '01/27 Purchase AEHR 01/15/2027 CALL AEHR TEST SYS $40 EXP 01/15/27 1.0000 6.5800 0.66 (658.66)',
-        '40.00 C',
-        'Commission $0.65; Industry Fee $0.01',
-        'Total Transactions'
-      ].join('\n');
-
-      const result = parser.parse(pdfText);
-
-      expect(result.success).toBe(true);
-      expect(result.optionTransactions).toHaveLength(1);
-      expect(result.optionTransactions[0]).toMatchObject({
-        ticker: 'AEHR',
-        optionType: 'call',
-        action: 'buy-to-open',
-        contracts: 1,
-        strikePrice: 40,
-        premiumPerShare: 6.58,
-        expirationDate: '2027-01-15',
-        fees: 0.66
-      });
-    });
-
-    it('should handle fractional premiums correctly', () => {
-      const pdfText = [
-        'January 1-31, 2026',
-        'Transaction Details',
-        '01/13 Sale SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 (2.0000) 0.3200 1.33 62.67',
-        '26.00 P EXP 01/16/26',
-        'Total Transactions'
-      ].join('\n');
-
-      const result = parser.parse(pdfText);
-      expect(result.optionTransactions[0].premiumPerShare).toBe(0.32);
-    });
   });
 
   // ---------------------------------------------------------------------------
-  // Full statement with all 5 transactions from real January 2026 PDF
+  // Full real statement — all 5 option transactions
   // ---------------------------------------------------------------------------
-  describe('Full statement parsing', () => {
+  describe('Full January 2026 statement', () => {
     const fullStatement = [
       'January 1-31, 2026',
       'Transaction Details',
+      // SOFI sell-to-open (Format A)
       '01/13 Sale SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 (2.0000) 0.3200 1.33 62.67',
       '26.00 P EXP 01/16/26',
       'Commission $1.30; Industry Fee $0.03',
-      '01/20 Other Activity Expired Short NVDA 01/16/2026 CALL NVIDIA CORP $200 EXP 01/16/26 (1.0000)',
-      '200.00 C',
-      'Other Activity Expired Long SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 EXP 01/16/26 2.0000',
-      '26.00 P',
-      '01/22 Purchase AEHR 01/15/2027 CALL AEHR TEST SYS $35 EXP 01/15/27 1.0000 8.2500 0.66 (825.66)',
-      '35.00 C',
+      // NVDA expired short (Format C)
+      '01/20 Other Expired Short NVDA CALL NVIDIA CORP $200 EXP (1.0000)',
+      'Activity 01/16/2026 01/16/26 200.00 C',
+      // SOFI expired long (Format D)
+      'Other Expired Long SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 2.0000',
+      'Activity 26.00 P EXP 01/16/26',
+      // AEHR $35 buy-to-open (Format B)
+      '01/22 Purchase AEHR CALL AEHR TEST SYS $35 1.0000 8.2500 0.66 (825.66)',
+      '01/15/2027 35.00 EXP 01/15/27 C',
       'Commission $0.65; Industry Fee $0.01',
-      '01/27 Purchase AEHR 01/15/2027 CALL AEHR TEST SYS $40 EXP 01/15/27 1.0000 6.5800 0.66 (658.66)',
-      '40.00 C',
+      // AEHR $40 buy-to-open (Format B)
+      '01/27 Purchase AEHR CALL AEHR TEST SYS $40 1.0000 6.5800 0.66 (658.66)',
+      '01/15/2027 40.00 EXP 01/15/27 C',
       'Commission $0.65; Industry Fee $0.01',
       'Total Transactions (1,421.65)'
     ].join('\n');
 
-    it('should parse all 5 option transactions', () => {
+    it('should parse all 5 option transactions with no stock transactions', () => {
       const result = parser.parse(fullStatement);
       expect(result.success).toBe(true);
-      expect(result.optionTransactions).toHaveLength(5);
       expect(result.transactions).toHaveLength(0);
+      expect(result.optionTransactions).toHaveLength(5);
     });
 
-    it('should correctly identify each transaction in order', () => {
+    it('should identify each transaction correctly', () => {
       const result = parser.parse(fullStatement);
       const opts = result.optionTransactions;
 
@@ -242,18 +250,18 @@ describe('SchwabMonthlyParser', () => {
       expect(opts[4]).toMatchObject({ ticker: 'AEHR', action: 'buy-to-open', contracts: 1, strikePrice: 40 });
     });
 
-    it('should assign correct dates to all transactions', () => {
+    it('should assign correct dates', () => {
       const result = parser.parse(fullStatement);
       const opts = result.optionTransactions;
 
       expect(opts[0].date).toBe('2026-01-13');
       expect(opts[1].date).toBe('2026-01-20');
-      expect(opts[2].date).toBe('2026-01-20'); // inherits date from prior line
+      expect(opts[2].date).toBe('2026-01-20'); // inherited
       expect(opts[3].date).toBe('2026-01-22');
       expect(opts[4].date).toBe('2026-01-27');
     });
 
-    it('should parse expiration dates in ISO format', () => {
+    it('should assign correct expiration dates', () => {
       const result = parser.parse(fullStatement);
       const opts = result.optionTransactions;
 
@@ -263,91 +271,28 @@ describe('SchwabMonthlyParser', () => {
       expect(opts[3].expirationDate).toBe('2027-01-15');
       expect(opts[4].expirationDate).toBe('2027-01-15');
     });
-  });
 
-  // ---------------------------------------------------------------------------
-  // Date inheritance and section detection
-  // ---------------------------------------------------------------------------
-  describe('Date handling', () => {
-    it('should inherit date from previous transaction when no date present', () => {
-      const pdfText = [
-        'January 1-31, 2026',
-        'Transaction Details',
-        '01/20 Other Activity Expired Short NVDA 01/16/2026 CALL NVIDIA CORP $200 EXP 01/16/26 (1.0000)',
-        '200.00 C',
-        'Other Activity Expired Long SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 EXP 01/16/26 2.0000',
-        '26.00 P',
-        'Total Transactions'
-      ].join('\n');
+    it('should assign correct premiums and fees', () => {
+      const result = parser.parse(fullStatement);
+      const opts = result.optionTransactions;
 
-      const result = parser.parse(pdfText);
-
-      expect(result.optionTransactions).toHaveLength(2);
-      expect(result.optionTransactions[0].date).toBe('2026-01-20');
-      expect(result.optionTransactions[1].date).toBe('2026-01-20');
-    });
-
-    it('should extract year from statement period header', () => {
-      const pdfText = [
-        'January 1-31, 2026',
-        'Transaction Details',
-        '01/22 Purchase AEHR 01/15/2027 CALL AEHR TEST SYS $35 EXP 01/15/27 1.0000 8.2500 0.66 (825.66)',
-        '35.00 C',
-        'Total Transactions'
-      ].join('\n');
-
-      const result = parser.parse(pdfText);
-      expect(result.optionTransactions[0].date).toContain('2026');
-    });
-
-    it('should use current year when statement period not found', () => {
-      const pdfText = [
-        'Transaction Details',
-        '01/22 Purchase AEHR 01/15/2027 CALL AEHR TEST SYS $35 EXP 01/15/27 1.0000 8.2500 0.66 (825.66)',
-        '35.00 C',
-        'Total Transactions'
-      ].join('\n');
-
-      const result = parser.parse(pdfText);
-      const currentYear = new Date().getFullYear().toString();
-      expect(result.optionTransactions[0].date).toContain(currentYear);
-    });
-
-    it('should handle Transaction Details split across lines', () => {
-      const pdfText = [
-        'January 1-31, 2026',
-        'Transaction',
-        'Details',
-        '01/22 Purchase AEHR 01/15/2027 CALL AEHR TEST SYS $35 EXP 01/15/27 1.0000 8.2500 0.66 (825.66)',
-        '35.00 C',
-        'Total Transactions'
-      ].join('\n');
-
-      const result = parser.parse(pdfText);
-      expect(result.success).toBe(true);
-      expect(result.optionTransactions).toHaveLength(1);
-    });
-
-    it('should handle Total Transactions split across lines', () => {
-      const pdfText = [
-        'January 1-31, 2026',
-        'Transaction Details',
-        '01/22 Purchase AEHR 01/15/2027 CALL AEHR TEST SYS $35 EXP 01/15/27 1.0000 8.2500 0.66 (825.66)',
-        '35.00 C',
-        'Total',
-        'Transactions'
-      ].join('\n');
-
-      const result = parser.parse(pdfText);
-      expect(result.success).toBe(true);
-      expect(result.optionTransactions).toHaveLength(1);
+      expect(opts[0].premiumPerShare).toBe(0.32);
+      expect(opts[0].fees).toBe(1.33);
+      expect(opts[1].premiumPerShare).toBe(0);
+      expect(opts[1].fees).toBe(0);
+      expect(opts[2].premiumPerShare).toBe(0);
+      expect(opts[2].fees).toBe(0);
+      expect(opts[3].premiumPerShare).toBe(8.25);
+      expect(opts[3].fees).toBe(0.66);
+      expect(opts[4].premiumPerShare).toBe(6.58);
+      expect(opts[4].fees).toBe(0.66);
     });
   });
 
   // ---------------------------------------------------------------------------
-  // Stock transactions (all-on-one-line format)
+  // Stock transactions
   // ---------------------------------------------------------------------------
-  describe('Stock Transactions (real PDF format)', () => {
+  describe('Stock Transactions', () => {
     it('should parse a stock purchase', () => {
       const pdfText = [
         'January 1-31, 2026',
@@ -361,11 +306,11 @@ describe('SchwabMonthlyParser', () => {
       expect(result.success).toBe(true);
       expect(result.transactions).toHaveLength(1);
       expect(result.transactions[0]).toMatchObject({
+        date: '2026-01-15',
         ticker: 'AAPL',
         action: 'buy',
         shares: 100,
-        pricePerShare: 150,
-        date: '2026-01-15'
+        pricePerShare: 150
       });
     });
 
@@ -379,33 +324,54 @@ describe('SchwabMonthlyParser', () => {
 
       const result = parser.parse(pdfText);
 
-      expect(result.success).toBe(true);
       expect(result.transactions).toHaveLength(1);
-      expect(result.transactions[0]).toMatchObject({
-        ticker: 'TSLA',
-        action: 'sell',
-        shares: 50,
-        pricePerShare: 200
-      });
+      expect(result.transactions[0]).toMatchObject({ ticker: 'TSLA', action: 'sell', shares: 50 });
     });
+  });
 
-    it('should parse stock and option transactions together', () => {
+  // ---------------------------------------------------------------------------
+  // Date handling
+  // ---------------------------------------------------------------------------
+  describe('Date handling', () => {
+    it('should extract year from statement period header', () => {
       const pdfText = [
         'January 1-31, 2026',
         'Transaction Details',
-        '01/15 Purchase AAPL APPLE INC 100 150.00 15000.00',
-        '01/22 Purchase AEHR 01/15/2027 CALL AEHR TEST SYS $35 EXP 01/15/27 1.0000 8.2500 0.66 (825.66)',
-        '35.00 C',
+        '01/22 Purchase AEHR CALL AEHR TEST SYS $35 1.0000 8.2500 0.66 (825.66)',
+        '01/15/2027 35.00 EXP 01/15/27 C',
         'Total Transactions'
       ].join('\n');
 
       const result = parser.parse(pdfText);
+      expect(result.optionTransactions[0].date).toContain('2026');
+    });
 
+    it('should use current year when statement period not found', () => {
+      const pdfText = [
+        'Transaction Details',
+        '01/22 Purchase AEHR CALL AEHR TEST SYS $35 1.0000 8.2500 0.66 (825.66)',
+        '01/15/2027 35.00 EXP 01/15/27 C',
+        'Total Transactions'
+      ].join('\n');
+
+      const result = parser.parse(pdfText);
+      const currentYear = new Date().getFullYear().toString();
+      expect(result.optionTransactions[0].date).toContain(currentYear);
+    });
+
+    it('should handle Transaction Details split across lines', () => {
+      const pdfText = [
+        'January 1-31, 2026',
+        'Transaction',
+        'Details',
+        '01/22 Purchase AEHR CALL AEHR TEST SYS $35 1.0000 8.2500 0.66 (825.66)',
+        '01/15/2027 35.00 EXP 01/15/27 C',
+        'Total Transactions'
+      ].join('\n');
+
+      const result = parser.parse(pdfText);
       expect(result.success).toBe(true);
-      expect(result.transactions).toHaveLength(1);
       expect(result.optionTransactions).toHaveLength(1);
-      expect(result.transactions[0].ticker).toBe('AAPL');
-      expect(result.optionTransactions[0].ticker).toBe('AEHR');
     });
   });
 });

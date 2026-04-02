@@ -158,7 +158,7 @@ describe('SchwabMonthlyParser', () => {
       expect(result.success).toBe(true);
       expect(result.optionTransactions).toHaveLength(1);
       expect(result.optionTransactions[0]).toMatchObject({
-        date: '2026-01-20',
+        date: '2026-01-16', // expired options use expiration date as txn date
         ticker: 'NVDA',
         optionType: 'call',
         action: 'buy-to-close',
@@ -191,7 +191,7 @@ describe('SchwabMonthlyParser', () => {
       expect(result.optionTransactions).toHaveLength(2);
       const sofi = result.optionTransactions[1];
       expect(sofi).toMatchObject({
-        date: '2026-01-20',
+        date: '2026-01-16', // expired options use expiration date as txn date
         ticker: 'SOFI',
         optionType: 'put',
         action: 'sell-to-close',
@@ -254,11 +254,11 @@ describe('SchwabMonthlyParser', () => {
       const result = parser.parse(fullStatement);
       const opts = result.optionTransactions;
 
-      expect(opts[0].date).toBe('2026-01-13');
-      expect(opts[1].date).toBe('2026-01-20');
-      expect(opts[2].date).toBe('2026-01-20'); // inherited
-      expect(opts[3].date).toBe('2026-01-22');
-      expect(opts[4].date).toBe('2026-01-27');
+      expect(opts[0].date).toBe('2026-01-13'); // sale: settlement date
+      expect(opts[1].date).toBe('2026-01-16'); // expired short: use expiration date
+      expect(opts[2].date).toBe('2026-01-16'); // expired long: use expiration date
+      expect(opts[3].date).toBe('2026-01-22'); // purchase: settlement date
+      expect(opts[4].date).toBe('2026-01-27'); // purchase: settlement date
     });
 
     it('should assign correct expiration dates', () => {

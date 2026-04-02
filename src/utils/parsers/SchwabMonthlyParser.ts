@@ -4,48 +4,48 @@ import type { BrokerParser, ImportResult, ParsedTransaction, ParsedOptionTransac
  * Parses Schwab monthly brokerage statements.
  *
  * After pdfjs Y-sorted text extraction + glyph merging, each visual table row
- * becomes one line. However, multi-line cells cause some fields to appear on
- * CONTINUATION LINES rather than the main transaction line.
+ * becomes one line. Multi-line cells cause fields to appear on CONTINUATION
+ * LINES. The continuation may not be the immediately-next line — intermediate
+ * lines (e.g. repeated column headers, spacing rows) may appear between.
  *
  * Observed real-PDF formats (January 2026 statement):
  *
- * A) Expiry on SAME line as ticker (SOFI sell/expired-long):
+ * A) Expiry on SAME line:
  *    "01/13 Sale SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 (2.0000) 0.3200 1.33 62.67"
  *    "26.00 P EXP 01/16/26"
  *
- * B) Expiry on CONTINUATION line (AEHR buy-to-open):
+ * B) Expiry on CONTINUATION line:
  *    "01/22 Purchase AEHR CALL AEHR TEST SYS $35 1.0000 8.2500 0.66 (825.66)"
  *    "01/15/2027 35.00 EXP 01/15/27 C"
  *
- * C) "Other Activity" split — "Activity" on next visual row (NVDA expired-short):
+ * C) "Other Activity" split:
  *    "01/20 Other Expired Short NVDA CALL NVIDIA CORP $200 EXP (1.0000)"
  *    "Activity 01/16/2026 01/16/26 200.00 C"
  *
- * D) No date, "Other Expired Long", expiry on same line (SOFI expired-long):
+ * D) No leading date, expiry on same line:
  *    "Other Expired Long SOFI 01/16/2026 PUT SOFI TECHNOLOGIES IN$26 2.0000"
  *    "Activity 26.00 P EXP 01/16/26"
  */
 
-// Option with expiry on same line:
-//   [MM/DD] (Sale|Purchase|Other…) TICKER MM/DD/YYYY (CALL|PUT) rest
+// Matches a transaction header line with TICKER then MM/DD/YYYY (expiry on same line)
 const OPTION_WITH_EXPIRY_RE = /^(?:(\d{1,2}\/\d{1,2})\s+)?(Sale|Purchase|Other(?:\s+Activity)?(?:\s+Expired\s+(?:Short|Long))?)\s+([A-Z]{1,6})\s+(\d{2}\/\d{2}\/\d{4})\s+(CALL|PUT)\s*(.*)/i;
 
-// Option WITHOUT expiry on main line (expiry will be on continuation):
-//   [MM/DD] (Sale|Purchase|Other…) TICKER (CALL|PUT) rest
+// Matches a transaction header line where expiry is NOT on this line
 const OPTION_NO_EXPIRY_RE = /^(?:(\d{1,2}\/\d{1,2})\s+)?(Sale|Purchase|Other(?:\s+Activity)?(?:\s+Expired\s+(?:Short|Long))?)\s+([A-Z]{1,6})\s+(CALL|PUT)\s*(.*)/i;
 
-// Stock transaction line (no CALL/PUT keyword):
-//   MM/DD (Sale|Purchase) TICKER rest
+// Matches a stock transaction line (no CALL/PUT keyword present)
 const STOCK_LINE_RE = /^(\d{1,2}\/\d{1,2})\s+(Sale|Purchase)\s+([A-Z]{1,6})\s+(.*)/;
 
-// Continuation line — strike + C/P, with optional "Activity" prefix and optional full expiry date.
-// EXP token may appear BEFORE or AFTER the C|P indicator.
-// Handles all observed formats:
-//   "26.00 P EXP 01/16/26"                            (EXP after C/P)
-//   "01/15/2027 35.00 EXP 01/15/27 C"                 (expiry first, EXP before C)
-//   "Activity 01/16/2026 01/16/26 200.00 C"            (Activity prefix, no EXP)
-//   "Activity 26.00 P EXP 01/16/26"                    (Activity prefix, EXP after C/P)
-const CONTINUATION_RE = /^(?:Activity\s+)?(\d{2}\/\d{2}\/\d{4})?\s*(?:\d{2}\/\d{2}\/\d{2}\s*)?([\d.]+)\s+(?:EXP\s+\d{2}\/\d{2}\/\d{2}\s+)?([CP])(?:\s+EXP\s+\d{2}\/\d{2}\/\d{2})?$/i;
+// A line that starts a NEW transaction — used to bound lookahead
+const NEW_TXN_RE = /^(?:\d{1,2}\/\d{1,2}\s+)?(?:Sale|Purchase|Other\s+(?:Activity|Expired))/i;
+
+// Extracts a full expiry date (MM/DD/YYYY) from anywhere in a line
+const EXPIRY_DATE_RE = /\b(\d{2}\/\d{2}\/\d{4})\b/;
+
+// Extracts strike + C/P from a continuation line.
+// Handles: "26.00 P", "200.00 C", "35.00 EXP 01/15/27 C", "35.00 C"
+// The strike is the last standalone decimal number before C or P.
+const STRIKE_CP_RE = /([\d.]+)\s+(?:EXP\s+\d{2}\/\d{2}\/\d{2}\s+)?([CP])\b/i;
 
 export class SchwabMonthlyParser implements BrokerParser {
   name = 'Schwab Monthly Statement';
@@ -61,7 +61,6 @@ export class SchwabMonthlyParser implements BrokerParser {
       const accountInfo = this.extractAccountInfo(pdfText);
       const year = this.extractYear(pdfText);
 
-      // Flexible section detection — handles "Transaction\nDetails" split
       const startIdx = pdfText.search(/Transaction\s+Details/i);
       if (startIdx === -1) {
         errors.push('Could not find Transaction Details section in PDF');
@@ -88,44 +87,49 @@ export class SchwabMonthlyParser implements BrokerParser {
           const date = currentDate ?? '01/01';
           const actionStr = withExpiry[2].trim();
           const ticker = withExpiry[3];
-          const expiryRaw = withExpiry[4]; // MM/DD/YYYY
+          const expiryRaw = withExpiry[4];
           const callPut = withExpiry[5].toUpperCase() as 'CALL' | 'PUT';
           const rest = withExpiry[6];
           i++;
 
           const { nums } = this.extractTrailingNumbers(rest);
 
-          // Read continuation line(s) for strike + type
+          // Look ahead (up to 5 lines) for strike + C/P continuation
+          const bound = Math.min(i + 5, lines.length);
           let strike: number | null = null;
           let optionType: 'call' | 'put' = callPut === 'CALL' ? 'call' : 'put';
 
-          while (i < lines.length) {
-            const contLine = lines[i];
-            if (/^Commission/i.test(contLine)) { i++; continue; }
-            const contMatch = CONTINUATION_RE.exec(contLine);
-            if (contMatch) {
-              strike = parseFloat(contMatch[2]);
-              optionType = contMatch[3].toUpperCase() === 'C' ? 'call' : 'put';
-              i++;
+          for (let j = i; j < bound; j++) {
+            const cl = lines[j];
+            if (j > i && NEW_TXN_RE.test(cl)) break;
+            if (/^Commission/i.test(cl)) continue;
+            const m = STRIKE_CP_RE.exec(cl);
+            if (m) {
+              strike = parseFloat(m[1]);
+              optionType = m[2].toUpperCase() === 'C' ? 'call' : 'put';
+              i = j + 1;
+              // skip trailing commission line
+              if (i < lines.length && /^Commission/i.test(lines[i])) i++;
+              break;
             }
-            break; // stop after first valid continuation (or non-matching line)
           }
 
-          if (strike === null) {
-            strike = this.extractStrikeFromDesc(rest);
-          }
+          if (strike === null) strike = this.extractStrikeFromDesc(rest);
 
-          const optionAction = this.mapOptionAction(actionStr);
-          const { qty, premiumPerShare, fees } = this.extractOptionNums(nums);
+          const isExpired = this.isExpiredAction(actionStr);
           const [em, ed, ey] = expiryRaw.split('/');
           const expirationDate = `${ey}-${em}-${ed}`;
+          // For expired options, use expiration date as transaction date (semantically correct)
+          const txnDate = isExpired ? expirationDate : this.parseDate(`${date}/${year}`);
+
+          const { qty, premiumPerShare, fees } = this.extractOptionNums(nums);
 
           if (qty > 0 && strike !== null) {
             optionTransactions.push({
-              date: this.parseDate(`${date}/${year}`),
+              date: txnDate,
               ticker,
               optionType,
-              action: optionAction,
+              action: this.mapOptionAction(actionStr),
               contracts: qty,
               strikePrice: strike,
               premiumPerShare,
@@ -154,47 +158,58 @@ export class SchwabMonthlyParser implements BrokerParser {
 
           const { nums } = this.extractTrailingNumbers(rest);
 
-          // Look ahead for expiry + strike + type on continuation line(s)
+          // Look ahead up to 5 lines for expiry date, strike, and C/P.
+          // Stop early if we hit a NEW transaction line (but not on j==i).
+          const bound = Math.min(i + 5, lines.length);
+          let expiryRaw: string | null = null;
           let strike: number | null = null;
           let optionType: 'call' | 'put' = callPut === 'CALL' ? 'call' : 'put';
-          let expiryRaw: string | null = null;
+          let lastContJ = i - 1;
 
-          while (i < lines.length) {
-            const contLine = lines[i];
-            if (/^Commission/i.test(contLine)) { i++; continue; }
+          for (let j = i; j < bound; j++) {
+            const cl = lines[j];
+            if (j > i && NEW_TXN_RE.test(cl)) break;
+            if (/^Commission/i.test(cl)) { lastContJ = j; continue; }
 
-            // Pattern: [Activity] MM/DD/YYYY [MM/DD/YY] N.NN C|P
-            const contMatch = CONTINUATION_RE.exec(contLine);
-            if (contMatch) {
-              if (contMatch[1]) expiryRaw = contMatch[1];
-              strike = parseFloat(contMatch[2]);
-              optionType = contMatch[3].toUpperCase() === 'C' ? 'call' : 'put';
-              i++;
-              break;
+            // Try to extract expiry date from this line
+            const expM = EXPIRY_DATE_RE.exec(cl);
+            if (expM && expiryRaw === null) expiryRaw = expM[1];
+
+            // Try to extract strike + C/P
+            const cpM = STRIKE_CP_RE.exec(cl);
+            if (cpM && strike === null) {
+              strike = parseFloat(cpM[1]);
+              optionType = cpM[2].toUpperCase() === 'C' ? 'call' : 'put';
             }
-            break;
+
+            lastContJ = j;
+            if (expiryRaw !== null && strike !== null) break;
           }
 
+          i = lastContJ + 1;
+          // skip trailing commission line
+          if (i < lines.length && /^Commission/i.test(lines[i])) i++;
+
           if (strike === null) strike = this.extractStrikeFromDesc(rest);
+
           if (expiryRaw === null) {
             warnings.push(`No expiry date found for option: ${line}`);
             continue;
           }
 
-          const optionAction = this.mapOptionAction(actionStr);
-          const { qty, premiumPerShare, fees } = this.extractOptionNums(nums);
+          const isExpired = this.isExpiredAction(actionStr);
           const [em, ed, ey] = expiryRaw.split('/');
           const expirationDate = `${ey}-${em}-${ed}`;
+          const txnDate = isExpired ? expirationDate : this.parseDate(`${date}/${year}`);
 
-          // Skip commission line if present
-          if (i < lines.length && /^Commission/i.test(lines[i])) i++;
+          const { qty, premiumPerShare, fees } = this.extractOptionNums(nums);
 
           if (qty > 0 && strike !== null) {
             optionTransactions.push({
-              date: this.parseDate(`${date}/${year}`),
+              date: txnDate,
               ticker,
               optionType,
-              action: optionAction,
+              action: this.mapOptionAction(actionStr),
               contracts: qty,
               strikePrice: strike,
               premiumPerShare,
@@ -221,7 +236,7 @@ export class SchwabMonthlyParser implements BrokerParser {
 
           const { nums } = this.extractTrailingNumbers(rest);
 
-          // Skip continuation lines for this stock row
+          // Skip continuation lines belonging to this stock row
           while (
             i < lines.length &&
             !OPTION_WITH_EXPIRY_RE.test(lines[i]) &&
@@ -266,7 +281,10 @@ export class SchwabMonthlyParser implements BrokerParser {
     }
   }
 
-  /** Map the action/category string to an option action */
+  private isExpiredAction(actionStr: string): boolean {
+    return /Expired\s+(?:Short|Long)/i.test(actionStr);
+  }
+
   private mapOptionAction(actionStr: string): 'sell-to-open' | 'buy-to-open' | 'buy-to-close' | 'sell-to-close' {
     if (/Expired\s+Short/i.test(actionStr)) return 'buy-to-close';
     if (/Expired\s+Long/i.test(actionStr)) return 'sell-to-close';
@@ -280,11 +298,7 @@ export class SchwabMonthlyParser implements BrokerParser {
     return '';
   }
 
-  /** Extract qty, premiumPerShare, fees from trailing numeric columns */
   private extractOptionNums(nums: number[]): { qty: number; premiumPerShare: number; fees: number } {
-    // nums layout depends on transaction type:
-    // sell-to-open / buy-to-open: [qty, price, fees, amount]  → 4 nums
-    // expired: [qty]                                           → 1 num
     return {
       qty: nums.length >= 1 ? Math.abs(nums[0]) : 0,
       premiumPerShare: nums.length >= 2 ? nums[1] : 0,
@@ -292,18 +306,13 @@ export class SchwabMonthlyParser implements BrokerParser {
     };
   }
 
-  /**
-   * Peels trailing numeric columns off a string right-to-left.
-   * Handles plain numbers (1.3300) and parenthesized negatives ((825.66)).
-   */
   private extractTrailingNumbers(str: string): { nums: number[]; desc: string } {
     const nums: number[] = [];
     let rest = str.trimEnd();
     const re = /\s+(\([\d,]+\.?\d*\)|[\d,]+\.?\d*)$/;
     let m: RegExpExecArray | null;
     while ((m = re.exec(rest)) !== null) {
-      const raw = m[1];
-      const val = parseFloat(raw.replace(/[(),]/g, '').replace(/,/g, ''));
+      const val = parseFloat(m[1].replace(/[(),]/g, '').replace(/,/g, ''));
       if (isNaN(val)) break;
       nums.unshift(val);
       rest = rest.slice(0, rest.length - m[0].length);
@@ -311,13 +320,11 @@ export class SchwabMonthlyParser implements BrokerParser {
     return { nums, desc: rest.trim() };
   }
 
-  /** Extract strike price from description, e.g. "$26" → 26 */
   private extractStrikeFromDesc(desc: string): number | null {
     const m = desc.match(/\$(\d+(?:\.\d+)?)/);
     return m ? parseFloat(m[1]) : null;
   }
 
-  /** Extract 4-digit year from statement period header */
   private extractYear(pdfText: string): string {
     const m = pdfText.match(
       /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d+-\d+,\s+(\d{4})/i
@@ -325,7 +332,6 @@ export class SchwabMonthlyParser implements BrokerParser {
     return m ? m[1] : new Date().getFullYear().toString();
   }
 
-  /** Convert MM/DD/YYYY to YYYY-MM-DD */
   private parseDate(dateStr: string): string {
     const parts = dateStr.split('/');
     if (parts.length !== 3) return dateStr;

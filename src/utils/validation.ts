@@ -239,8 +239,10 @@ export const validateOptionTransaction = (
       severity: 'error'
     });
   } else {
-    // Expiration should be after transaction date
-    if (expirationDate < transactionDate) {
+    // Expiration should be after transaction date, EXCEPT for closing/expired actions
+    // where settlement may occur after the expiration date.
+    const isClosingAction = transaction.action === 'buy-to-close' || transaction.action === 'sell-to-close';
+    if (expirationDate < transactionDate && !isClosingAction) {
       errors.push({
         field: 'expirationDate',
         message: 'Expiration date cannot be before transaction date',

@@ -482,6 +482,52 @@ describe('edge cases', () => {
     expect(t.premiumPerShare).toBeCloseTo(37.2766, 3);
   });
 
+  it('handles actual PDF format: $ attached to date with no space, numbers concatenated with $', () => {
+    // Real pdfjs output: no space between date and $, no space between dollar amounts
+    const pdf = `
+TAX YEAR 2025
+FORM 1099 COMPOSITE
+& YEAR-END SUMMARY
+
+00760J108 / AEHR
+345370860 / F
+
+YEAR-END SUMMARY INFORMATION IS NOT PROVIDED TO THE IRS.
+
+REALIZED GAIN OR (LOSS)
+
+Short-Term Realized Gain or (Loss)
+Description OR CUSIP Date Date (+)Wash Sale (=)Realized
+Option Symbol Number Quantity/Par Acquired Sold Total Proceeds (-)Cost Basis Loss Disallowed Gain or (Loss)
+AEHR 01/17/2025 15.00 C 2.00S 12/24/24 01/17/25$ 288.66$ 0.00 -- $ 288.66
+AEHR 07/18/2025 20.00 C 8.00 07/08/25 07/18/25$ 0.00$ 507.29 -- $ (507.29)
+FORD MTR CO DEL 345370860 300.00 08/01/25 08/08/25 $ 3,327.96$ 3,220.99 -- $ 106.97
+ASTS 10/24/2025 50.00 C 1.00S 10/14/25 10/14/25$ 454.34$ 3,727.66 -- $ (3,273.32)
+
+Terms and Conditions
+    `.trim();
+
+    const result = parser.parse(pdf);
+    expect(result.success).toBe(true);
+    expect(result.optionTransactions).toHaveLength(3);
+    expect(result.transactions).toHaveLength(1);
+
+    const shortExpired = result.optionTransactions.find(t => t.ticker === 'AEHR' && t.action === 'buy-to-close' && t.strikePrice === 15);
+    expect(shortExpired?.isExpired).toBe(true);
+    expect(shortExpired?.premiumPerShare).toBe(0); // costBasis=0
+
+    const longExpired = result.optionTransactions.find(t => t.ticker === 'AEHR' && t.action === 'sell-to-close');
+    expect(longExpired?.isExpired).toBe(true);
+    expect(longExpired?.premiumPerShare).toBe(0); // proceeds=0
+
+    const astsClose = result.optionTransactions.find(t => t.ticker === 'ASTS');
+    expect(astsClose?.premiumPerShare).toBeCloseTo(37.2766, 3); // 3727.66/100
+
+    const ford = result.transactions[0];
+    expect(ford.ticker).toBe('F');
+    expect(ford.pricePerShare).toBeCloseTo(3327.96 / 300, 2);
+  });
+
   it('returns empty results gracefully for empty realized section', () => {
     const result = parser.parse(makePdf(''));
     expect(result.success).toBe(true);

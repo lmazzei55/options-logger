@@ -47,8 +47,10 @@ import type { BrokerParser, ImportResult, ParsedTransaction, ParsedOptionTransac
  *   CUSIP / TICKER   e.g.: 00760J108 / AEHR
  */
 
-// Closed option row: two dates present, quantity may have S suffix
-const CLOSED_OPTION_RE = /^([A-Z]{1,6})\s+(\d{2}\/\d{2}\/\d{4})\s+([\d.]+)\s+(C|P)\s+([\d.]+)\s*(S?)\s+(\d{2}\/\d{2}\/\d{2})\s+(\d{2}\/\d{2}\/\d{2})(.*)/i;
+// Closed option row: two dates present, quantity may have S suffix.
+// NOTE: S must be captured WITHOUT preceding \s* — otherwise the space between qty and date
+// gets consumed by \s* when S is absent, leaving \s+ with nothing to match.
+const CLOSED_OPTION_RE = /^([A-Z]{1,6})\s+(\d{2}\/\d{2}\/\d{4})\s+([\d.]+)\s+(C|P)\s+([\d.]+)(S?)\s+(\d{2}\/\d{2}\/\d{2})\s+(\d{2}\/\d{2}\/\d{2})(.*)/i;
 
 // Closed stock row: CUSIP is a 9-character alphanumeric token; two dates follow
 const CLOSED_STOCK_RE = /^(.+?)\s+([0-9A-Z]{9})\s+([\d.]+)\s+(\d{2}\/\d{2}\/\d{2})\s+(\d{2}\/\d{2}\/\d{2})(.*)/;
@@ -91,8 +93,18 @@ export class SchwabYearlyParser implements BrokerParser {
     // Split into lines
     const lines = pdfText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-    // Find Year-End Summary section
-    const yearEndIdx = lines.findIndex(l => /YEAR-END\s+SUMMARY/i.test(l));
+    // Find the ACTUAL Year-End Summary section start (not the TOC entry).
+    // "YEAR-END SUMMARY INFORMATION IS NOT PROVIDED TO THE IRS" only appears
+    // at the top of the actual section pages, not in the Table of Contents.
+    // Using just "YEAR-END SUMMARY" would match the TOC entry on page 2, which
+    // also contains "Terms and Conditions. . .24" — causing a premature break.
+    let yearEndIdx = lines.findIndex(l =>
+      /YEAR-END SUMMARY INFORMATION IS NOT PROVIDED TO THE IRS/i.test(l)
+    );
+    // Fallback: less specific match if the above isn't found (e.g. older format)
+    if (yearEndIdx === -1) {
+      yearEndIdx = lines.findIndex(l => /YEAR-END\s+SUMMARY/i.test(l));
+    }
     if (yearEndIdx === -1) {
       warnings.push('No Year-End Summary section found in this document');
       return { success: true, transactions, optionTransactions, accountInfo, errors, warnings };
@@ -367,7 +379,7 @@ export class SchwabYearlyParser implements BrokerParser {
    */
   private extractNumbers(str: string): number[] {
     const cleaned = str
-      .replace(/\$\s*/g, '')   // remove dollar signs
+      .replace(/\$/g, ' ')     // replace $ with space (not empty) to avoid concatenating adjacent numbers
       .replace(/--/g, ' ')     // remove placeholder dashes
       .replace(/\s+[a-z]\s*$/i, ''); // remove trailing endnote letter (f, etc.)
 

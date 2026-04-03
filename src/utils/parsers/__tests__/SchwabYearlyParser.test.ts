@@ -534,4 +534,28 @@ Terms and Conditions
     expect(result.transactions).toHaveLength(0);
     expect(result.optionTransactions).toHaveLength(0);
   });
+
+  it('infers ticker via prefix matching when stock CUSIP has no explicit CUSIP/TICKER mapping', () => {
+    // WOLFSPEED INC (CUSIP 97785W106) never appears as "97785W106 / WOLF" in 1099-B.
+    // The ticker WOLF is only seen as an option symbol in the Year-End Summary.
+    // The parser should infer WOLF from WOLFSPEED by prefix matching.
+    const realizedRows = `
+WOLF 08/22/2025 1.00 P 10.00S 08/15/25 08/22/25 $ 13.36 $ 0.00 -- $ 13.36
+Security Subtotal $ 13.36 $ 0.00 -- $ 13.36
+WOLFSPEED INC 97785W106 0.35 09/26/25 10/02/25 $ 10.67 $ 84.29 -- $ (73.62)
+Security Subtotal $ 10.67 $ 84.29 -- $ (73.62)
+    `.trim();
+    const result = parser.parse(makePdf(realizedRows));
+    expect(result.success).toBe(true);
+    // WOLF option row parsed
+    expect(result.optionTransactions).toHaveLength(1);
+    // WOLFSPEED stock row parsed using inferred WOLF ticker
+    expect(result.transactions).toHaveLength(1);
+    const wolfStock = result.transactions[0];
+    expect(wolfStock.ticker).toBe('WOLF');
+    expect(wolfStock.shares).toBe(0.35);
+    expect(wolfStock.date).toBe('2025-10-02');
+    // No "unknown ticker" warning
+    expect(result.warnings.some(w => /unknown ticker/i.test(w))).toBe(false);
+  });
 });

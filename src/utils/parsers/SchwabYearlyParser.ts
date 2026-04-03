@@ -90,7 +90,7 @@ export class SchwabYearlyParser implements BrokerParser {
     // Build CUSIP → ticker map from 1099-B section (for stock row identification)
     const cusipMap = this.buildCusipMap(pdfText);
 
-    // Split into lines
+    // Split into lines (needed for both section-finding and parsing)
     const lines = pdfText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
     // Find the ACTUAL Year-End Summary section start (not the TOC entry).
@@ -109,6 +109,11 @@ export class SchwabYearlyParser implements BrokerParser {
       warnings.push('No Year-End Summary section found in this document');
       return { success: true, transactions, optionTransactions, accountInfo, errors, warnings };
     }
+
+    // Collect all option tickers visible in the Year-End Summary section.
+    // Used as fallback when a stock CUSIP has no explicit CUSIP/TICKER pair in the 1099-B
+    // (e.g. WOLFSPEED INC whose CUSIP 97785W106 never appears as "97785W106 / WOLF").
+    const knownOptionTickers = this.buildOptionTickerSet(lines, yearEndIdx);
 
     // Track which section we're in as we scan
     type Section = 'none' | 'realized' | 'options_assigned' | 'options_open_long' | 'options_open_short';
@@ -157,7 +162,15 @@ export class SchwabYearlyParser implements BrokerParser {
         const stockMatch = CLOSED_STOCK_RE.exec(line);
         if (stockMatch) {
           const cusip = stockMatch[2];
-          const ticker = cusipMap.get(cusip);
+          let ticker = cusipMap.get(cusip);
+          if (!ticker) {
+            // Fallback: infer ticker from company name prefix vs known option tickers
+            // e.g. "WOLFSPEED INC" → first word "WOLFSPEED" starts with known ticker "WOLF"
+            ticker = this.inferTickerFromCompanyName(stockMatch[1], knownOptionTickers) ?? undefined;
+            if (ticker) {
+              cusipMap.set(cusip, ticker); // cache for any subsequent rows with same CUSIP
+            }
+          }
           if (!ticker) {
             warnings.push(`Skipped stock row (unknown ticker for CUSIP ${cusip}): "${line.slice(0, 60)}"`);
             continue;
@@ -304,6 +317,41 @@ export class SchwabYearlyParser implements BrokerParser {
       premiumPerShare,
       expirationDate,
     };
+  }
+
+  /**
+   * Collect all option tickers seen in the Year-End Summary section.
+   * Used as fallback when a stock row's CUSIP has no explicit CUSIP/TICKER pair in the 1099-B.
+   */
+  private buildOptionTickerSet(lines: string[], yearEndIdx: number): Set<string> {
+    const tickers = new Set<string>();
+    for (let i = yearEndIdx; i < lines.length; i++) {
+      const m = CLOSED_OPTION_RE.exec(lines[i]) || OPEN_OPTION_RE.exec(lines[i]);
+      if (m) tickers.add(m[1].toUpperCase());
+    }
+    return tickers;
+  }
+
+  /**
+   * Try to infer a stock ticker from the company name by checking whether the
+   * first word of the company name STARTS WITH a known option ticker.
+   * Example: "WOLFSPEED INC" → first word "WOLFSPEED" starts with known ticker "WOLF".
+   * Returns the longest matching ticker (min length 2) or null if no match.
+   */
+  private inferTickerFromCompanyName(companyName: string, knownTickers: Set<string>): string | null {
+    const firstWord = companyName.trim().split(/\s+/)[0].toUpperCase();
+    let best: string | null = null;
+    for (const ticker of knownTickers) {
+      if (
+        ticker.length >= 2 &&
+        firstWord.startsWith(ticker) &&
+        firstWord.length > ticker.length && // first word is longer than ticker — not an exact match
+        (!best || ticker.length > best.length)
+      ) {
+        best = ticker;
+      }
+    }
+    return best;
   }
 
   private extractAccountInfo(pdfText: string): AccountInfo | undefined {

@@ -1,17 +1,20 @@
 import type { BrokerParser } from './BrokerParser';
 import { AcornsParser } from './AcornsParser';
 import { SchwabMonthlyParser } from './SchwabMonthlyParser';
+import { SchwabYearlyParser } from './SchwabYearlyParser';
 import { FidelityParser } from './FidelityParser';
 
 export * from './BrokerParser';
 export * from './AcornsParser';
 export * from './SchwabMonthlyParser';
+export * from './SchwabYearlyParser';
 export * from './FidelityParser';
 
 // Registry of all available broker parsers
 export const BROKER_PARSERS: Record<string, BrokerParser> = {
   acorns: new AcornsParser(),
   'schwab-monthly': new SchwabMonthlyParser(),
+  'schwab-yearly': new SchwabYearlyParser(),
   fidelity: new FidelityParser(),
   // Future parsers can be added here:
   // robinhood: new RobinhoodParser(),

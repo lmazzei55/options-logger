@@ -3,12 +3,14 @@ import { AcornsParser } from './AcornsParser';
 import { SchwabMonthlyParser } from './SchwabMonthlyParser';
 import { SchwabYearlyParser } from './SchwabYearlyParser';
 import { FidelityParser } from './FidelityParser';
+import { IBKRParser } from './IBKRParser';
 
 export * from './BrokerParser';
 export * from './AcornsParser';
 export * from './SchwabMonthlyParser';
 export * from './SchwabYearlyParser';
 export * from './FidelityParser';
+export * from './IBKRParser';
 
 // Registry of all available broker parsers
 export const BROKER_PARSERS: Record<string, BrokerParser> = {
@@ -16,10 +18,10 @@ export const BROKER_PARSERS: Record<string, BrokerParser> = {
   'schwab-monthly': new SchwabMonthlyParser(),
   'schwab-yearly': new SchwabYearlyParser(),
   fidelity: new FidelityParser(),
+  ibkr: new IBKRParser(),
   // Future parsers can be added here:
   // robinhood: new RobinhoodParser(),
   // vanguard: new VanguardParser(),
-  // ibkr: new IBKRParser(),
 };
 
 // Get list of available brokers for UI dropdown
